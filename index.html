@@ -64,9 +64,19 @@
       padding: 20px;
       background-color: white;
     }
-    h1 {
-      text-align: center; 
-      margin-top: 20px;
+    .header {
+        background-color: #FFE600;
+        padding: 20px;
+        margin-bottom: 30px;
+        text-align: center;
+        width: 100%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .header h1 {
+        margin: 0;
+        color: #000;
+        font-size: 2em;
     }
     .mapa-container {
       display: flex;
@@ -155,7 +165,9 @@
 </head>
 
 <body>
-  <h1>Estado de los Medios de Elevación</h1>
+  <div class="header">
+    <h1>Estado de los Medios de Elevación</h1>
+  </div>
 
   <!-- Mensajes de estado -->
   <div id="loading">Cargando datos...</div>
