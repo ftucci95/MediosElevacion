@@ -1,0 +1,23 @@
+# Archivos de configuración
+.env
+.DS_Store
+
+# Dependencias
+node_modules/
+vendor/
+
+# Archivos de compilación
+dist/
+build/
+
+# Archivos temporales
+*.log
+*.tmp
+
+# Archivos del sistema operativo
+Thumbs.db
+ehthumbs.db
+
+# Configuraciones específicas del IDE
+.idea/
+*.sublime-project

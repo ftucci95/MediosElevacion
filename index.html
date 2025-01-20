@@ -4,6 +4,57 @@
   <meta charset="UTF-8">
   <title>Medios de Elevación en Tiempo Real</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Agregar en el <head> de tu index.html -->
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    
+  <script>
+    // Configuración de Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyDvXfQcRKFwc9XFVwVKSnCjl9im3zU2fvY",
+      authDomain: "medioselevacion-sbase.firebaseapp.com",
+      projectId: "medioselevacion-sbase",
+      storageBucket: "medioselevacion-sbase.firebasestorage.app",
+      messagingSenderId: "1082577847683",
+      appId: "1:1082577847683:web:d15b05a15983d674d962b6",
+      measurementId: "G-4XK7D02G0Y"
+    };
+
+    // Inicializar Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Función para registrar un cambio de estado
+    function registrarCambio(linea, estacion, medioElevacion, estado) {
+      // Validación de parámetros
+      if (!linea || !estacion || !medioElevacion || !estado) {
+        console.error("Todos los parámetros son obligatorios.");
+        return;
+      }
+
+      // Validación de tipos (puedes ajustar según tus necesidades)
+      if (typeof linea !== 'string' || typeof estacion !== 'string' || 
+          typeof medioElevacion !== 'string' || typeof estado !== 'string') {
+        console.error("Los parámetros deben ser de tipo string.");
+        return;
+      }
+
+      db.collection("historialCambios").add({
+        linea: linea,
+        estacion: estacion,
+        medioElevacion: medioElevacion,
+        estado: estado,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      })
+      .then(() => {
+        console.log("Cambio registrado exitosamente.");
+      })
+      .catch(error => {
+        console.error("Error al agregar documento: ", error);
+      });
+    }
+  </script>
 
   <style>
     body {
@@ -222,6 +273,69 @@
     };
 
     /**
+     * Datos anteriores para comparación.
+     * @type {Object}
+     */
+    let datosAnteriores = null;
+    function detectarCambios(datosAnteriores, datosNuevos) {
+      console.log("Detectando cambios...");
+      
+      // Variable para contar la cantidad de cambios detectados
+      let contadorCambios = 0;
+      
+      datosNuevos.forEach(lineaNueva => {
+        const lineaAnterior = datosAnteriores.find(l => l.nombre === lineaNueva.nombre);
+        if (!lineaAnterior) {
+          // Línea nueva completa (caso muy raro). Podrías tomarlo como muchos cambios
+          return;
+        }
+
+        lineaNueva.estaciones.forEach(estacionNueva => {
+          const estacionAnterior = lineaAnterior.estaciones.find(e => e.nombre === estacionNueva.nombre);
+          if (!estacionAnterior) {
+            // Estación completamente nueva
+            return;
+          }
+
+          estacionNueva.accesos.forEach(accesoNuevo => {
+            const accesoAnterior = estacionAnterior.accesos.find(a => a.descripcion === accesoNuevo.descripcion);
+            
+            // 1. Acceso nuevo
+            if (!accesoAnterior) {
+              registrarCambio(
+                lineaNueva.nombre, 
+                estacionNueva.nombre, 
+                accesoNuevo.descripcion, 
+                accesoNuevo.funcionando ? "Operativo" : "No operativo"
+              );
+              contadorCambios++;
+              return;
+            }
+            
+            // 2. Cambio de estado
+            if (accesoNuevo.funcionando !== accesoAnterior.funcionando) {
+              const estado = accesoNuevo.funcionando ? "Operativo" : "No operativo";
+              registrarCambio(
+                lineaNueva.nombre, 
+                estacionNueva.nombre, 
+                accesoNuevo.descripcion, 
+                estado
+              );
+              contadorCambios++;
+            }
+          });
+        });
+      });
+
+      // Al final, logueás la cantidad de cambios detectados en este ciclo
+      if (contadorCambios > 0) {
+        console.log(`Se detectaron ${contadorCambios} cambios en esta actualización.`);
+      } else {
+        console.log("No se detectaron cambios en esta actualización.");
+      }
+    }
+
+    /**
      * Función principal para obtener datos desde la API y renderizar en la página.
      */
     async function obtenerDatos() {
@@ -237,6 +351,14 @@
           throw new Error(`Error HTTP: ${respuesta.status}`);
         }
         const datos = await respuesta.json();
+        // Si no es la primera llamada, comparamos con datosAnteriores
+        if (datosAnteriores) {
+          // Lógica de comparación entre datosAnteriores y datos 
+          // para ver si hubo cambios
+          detectarCambios(datosAnteriores, datos);
+        }
+        // Actualizar datosAnteriores con los datos actuales
+        datosAnteriores = datos;
         renderizarIndicadores(datos);
       } catch (error) {
         console.error("Error al obtener los datos:", error);

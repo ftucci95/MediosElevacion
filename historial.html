@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Historial de Cambios de Estado</title>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js"></script>
+    <script>
+        // Configuración de Firebase
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "TU_AUTH_DOMAIN",
+            projectId: "TU_PROJECT_ID",
+            storageBucket: "TU_STORAGE_BUCKET",
+            messagingSenderId: "TU_MESSAGING_SENDER_ID",
+            appId: "TU_APP_ID",
+            measurementId: "TU_MEASUREMENT_ID"
+        };
+
+        // Inicializar Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Función para obtener el historial de cambios
+        function obtenerHistorial() {
+            db.collection("historialCambios").get().then((querySnapshot) => {
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    // Aquí puedes crear elementos para mostrar en la página
+                    console.log(data); // Por ahora solo lo mostramos en la consola
+                });
+            });
+        }
+
+        // Llamar a obtenerHistorial al cargar la página
+        window.onload = obtenerHistorial;
+    </script>
+</head>
+<body>
+    <h1>Historial de Cambios de Estado</h1>
+    <div id="historial"></div>
+</body>
+</html>
