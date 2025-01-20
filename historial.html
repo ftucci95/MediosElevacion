@@ -3,41 +3,631 @@
 <head>
     <meta charset="UTF-8">
     <title>Historial de Cambios de Estado</title>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <!-- Agregamos Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: white;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        .filters {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .filters select, .filters input {
+            margin: 5px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            margin-top: 0;
+            color: #666;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            position: relative;
+            padding-right: 20px; /* Espacio para el indicador de sorting */
+        }
+
+        th:hover {
+            background-color: #0056b3;
+        }
+
+        th.sort-asc::after {
+            content: "▲";
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        th.sort-desc::after {
+            content: "▼";
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        tr:hover {
+            background-color: #f2f2f2;
+        }
+
+        .status-operativo {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .status-no-operativo {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .button-container {
+            margin-top: 20px;
+            text-align: right;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Historial de Cambios de Estado</h1>
+        
+        <!-- Filtros -->
+        <div class="filters">
+            <select id="lineaFilter">
+                <option value="">Todas las líneas</option>
+                <option value="Línea A">Línea A</option>
+                <option value="Línea B">Línea B</option>
+                <option value="Línea C">Línea C</option>
+                <option value="Línea D">Línea D</option>
+                <option value="Línea E">Línea E</option>
+                <option value="Línea H">Línea H</option>
+            </select>
+            <select id="periodoFilter">
+                <option value="7">Últimos 7 días</option>
+                <option value="15">Últimos 15 días</option>
+                <option value="30">Últimos 30 días</option>
+                <option value="60">Últimos 60 días</option>
+            </select>
+            <select id="estadoFilter">
+                <option value="">Todos los estados</option>
+                <option value="Operativo">Operativo</option>
+                <option value="No operativo">No operativo</option>
+            </select>
+        </div>
+
+        <!-- Estadísticas generales -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total de Fallas</h3>
+                <div id="totalFallas" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Medios No Operativos</h3>
+                <div id="mediosNoOperativos" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Tiempo Promedio de Falla</h3>
+                <div id="tiempoPromedioFalla" class="stat-value">-</div>
+            </div>
+        </div>
+
+        <!-- Tabla de medios de elevación -->
+        <h2>Medios de Elevación</h2>
+        <table id="mediosTable">
+            <thead>
+                <tr>
+                    <th data-sort="linea">Línea</th>
+                    <th data-sort="estacion">Estación</th>
+                    <th data-sort="medio">Medio</th>
+                    <th data-sort="fallas">Total Fallas</th>
+                    <th data-sort="tiempo">Tiempo Promedio de Falla</th>
+                    <th data-sort="estado">Estado Actual</th>
+                    <th data-sort="actualizacion">Última Actualización</th>
+                </tr>
+            </thead>
+            <tbody id="mediosTableBody">
+                <!-- Se llena dinámicamente -->
+            </tbody>
+        </table>
+
+        <!-- Gráfico de tendencias -->
+        <div class="chart-container">
+            <canvas id="trendsChart"></canvas>
+        </div>
+
+        <div class="button-container">
+            <button onclick="window.location.href='index.html'">Volver al mapa</button>
+        </div>
+    </div>
+
     <script>
         // Configuración de Firebase
         const firebaseConfig = {
-            apiKey: "TU_API_KEY",
-            authDomain: "TU_AUTH_DOMAIN",
-            projectId: "TU_PROJECT_ID",
-            storageBucket: "TU_STORAGE_BUCKET",
-            messagingSenderId: "TU_MESSAGING_SENDER_ID",
-            appId: "TU_APP_ID",
-            measurementId: "TU_MEASUREMENT_ID"
+            apiKey: "AIzaSyDvXfQcRKFwc9XFVwVKSnCjl9im3zU2fvY",
+            authDomain: "medioselevacion-sbase.firebaseapp.com",
+            projectId: "medioselevacion-sbase",
+            storageBucket: "medioselevacion-sbase.firebasestorage.app",
+            messagingSenderId: "1082577847683",
+            appId: "1:1082577847683:web:d15b05a15983d674d962b6",
+            measurementId: "G-4XK7D02G0Y"
         };
 
         // Inicializar Firebase
         const app = firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // Función para obtener el historial de cambios
-        function obtenerHistorial() {
-            db.collection("historialCambios").get().then((querySnapshot) => {
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    // Aquí puedes crear elementos para mostrar en la página
-                    console.log(data); // Por ahora solo lo mostramos en la consola
+        // Variables globales
+        let trendsChart = null;
+        let currentData = {
+            historial: [],
+            estadoActual: []
+        };
+        let mediosMap = new Map();
+
+        // Variables para el sorting
+        let currentSort = {
+            column: null,
+            direction: 'asc'
+        };
+
+        // Función para formatear fechas
+        function formatDate(timestamp) {
+            if (!timestamp) return "-";
+            
+            try {
+                // Si es un timestamp numérico
+                if (typeof timestamp === 'number') {
+                    return new Date(timestamp).toLocaleString('es-AR');
+                }
+                // Si el timestamp es un objeto Firestore
+                if (timestamp && timestamp.seconds) {
+                    return new Date(timestamp.seconds * 1000).toLocaleString('es-AR');
+                }
+                // Si es una fecha o string
+                const date = new Date(timestamp);
+                if (isNaN(date.getTime())) return "-";
+                return date.toLocaleString('es-AR');
+            } catch (error) {
+                console.error("Error al formatear fecha:", error);
+                return "-";
+            }
+        }
+
+        // Función para calcular el tiempo promedio
+        function calcularTiempoPromedio(fallas) {
+            if (!fallas || fallas.length === 0) return "-";
+            const total = fallas.reduce((sum, falla) => {
+                let inicio = falla.timestamp;
+                let fin = falla.timestampResolucion || new Date();
+                
+                // Convertir timestamps de Firestore si es necesario
+                if (inicio && inicio.seconds) {
+                    inicio = new Date(inicio.seconds * 1000);
+                } else {
+                    inicio = new Date(inicio);
+                }
+                
+                if (fin && fin.seconds) {
+                    fin = new Date(fin.seconds * 1000);
+                } else if (!(fin instanceof Date)) {
+                    fin = new Date(fin);
+                }
+                
+                return sum + (fin - inicio);
+            }, 0);
+            
+            const promedio = total / fallas.length;
+            const horas = Math.floor(promedio / (1000 * 60 * 60));
+            const minutos = Math.floor((promedio % (1000 * 60 * 60)) / (1000 * 60));
+            
+            if (horas === 0) {
+                return `${minutos}m`;
+            } else {
+                return `${horas}h ${minutos}m`;
+            }
+        }
+
+        // Función para cargar y mostrar los datos
+        async function cargarDatos() {
+            try {
+                // Obtener estado actual
+                const estadoDoc = await db.collection("estadoActual").doc("estado").get();
+                currentData.estadoActual = estadoDoc.exists ? estadoDoc.data().estado : [];
+
+                // Obtener historial de cambios
+                const historialSnapshot = await db.collection("historialCambios")
+                    .orderBy("timestamp", "desc")
+                    .get();
+                
+                currentData.historial = historialSnapshot.docs.map(doc => doc.data());
+
+                // Procesar datos para la tabla
+                mediosMap = new Map();
+                currentData.historial.forEach(cambio => {
+                    const key = `${cambio.linea}-${cambio.estacion}-${cambio.medioElevacion}`;
+                    if (!mediosMap.has(key)) {
+                        mediosMap.set(key, {
+                            linea: cambio.linea,
+                            estacion: cambio.estacion,
+                            medio: cambio.medioElevacion,
+                            fallas: [],
+                            estadoActual: "Desconocido",
+                            ultimaActualizacion: null
+                        });
+                    }
+                    const medio = mediosMap.get(key);
+                    if (cambio.estado === "No operativo") {
+                        medio.fallas.push(cambio);
+                    }
                 });
+
+                // Actualizar estado actual y última actualización
+                currentData.estadoActual.forEach(linea => {
+                    linea.estaciones.forEach(estacion => {
+                        estacion.accesos.forEach(acceso => {
+                            const key = `${linea.nombre}-${estacion.nombre}-${acceso.descripcion}`;
+                            const medio = mediosMap.get(key);
+                            if (medio) {
+                                medio.estadoActual = acceso.funcionando ? "Operativo" : "No operativo";
+                                // Convertir la fecha a timestamp si es necesario
+                                if (acceso.fechaActualizacion && typeof acceso.fechaActualizacion === 'string') {
+                                    medio.ultimaActualizacion = new Date(acceso.fechaActualizacion).getTime();
+                                } else if (acceso.fechaActualizacion && acceso.fechaActualizacion.seconds) {
+                                    medio.ultimaActualizacion = acceso.fechaActualizacion.seconds * 1000;
+                                } else {
+                                    medio.ultimaActualizacion = acceso.fechaActualizacion;
+                                }
+                            }
+                        });
+                    });
+                });
+
+                // Actualizar tabla
+                const tbody = document.getElementById('mediosTableBody');
+                tbody.innerHTML = '';
+                mediosMap.forEach(medio => {
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td>${medio.linea}</td>
+                        <td>${medio.estacion}</td>
+                        <td>${medio.medio}</td>
+                        <td>${medio.fallas.length}</td>
+                        <td>${calcularTiempoPromedio(medio.fallas)}</td>
+                        <td class="status-${medio.estadoActual.toLowerCase().replace(' ', '-')}">${medio.estadoActual}</td>
+                        <td>${formatDate(medio.ultimaActualizacion)}</td>
+                    `;
+                });
+
+                // Actualizar estadísticas generales
+                document.getElementById('totalFallas').textContent = currentData.historial.filter(c => c.estado === "No operativo").length;
+                document.getElementById('mediosNoOperativos').textContent = Array.from(mediosMap.values()).filter(m => m.estadoActual === "No operativo").length;
+                
+                // Actualizar gráfico de tendencias
+                actualizarGrafico();
+
+            } catch (error) {
+                console.error("Error al cargar datos:", error);
+            }
+        }
+
+        // Función para aplicar filtros
+        function aplicarFiltros() {
+            const linea = document.getElementById('lineaFilter').value;
+            const periodo = parseInt(document.getElementById('periodoFilter').value);
+            const estado = document.getElementById('estadoFilter').value;
+
+            const fechaLimite = new Date();
+            fechaLimite.setDate(fechaLimite.getDate() - periodo);
+
+            // Filtrar medios según los criterios
+            const tbody = document.getElementById('mediosTableBody');
+            tbody.innerHTML = '';
+
+            Array.from(mediosMap.values()).forEach(medio => {
+                // Filtrar por línea si hay una seleccionada
+                if (linea && medio.linea !== linea) return;
+
+                // Filtrar fallas por período
+                const fallasPeriodo = medio.fallas.filter(falla => {
+                    const fechaFalla = falla.timestamp && falla.timestamp.seconds ? 
+                        new Date(falla.timestamp.seconds * 1000) : 
+                        new Date(falla.timestamp);
+                    return fechaFalla >= fechaLimite;
+                });
+
+                // Determinar si el medio debe mostrarse basado en:
+                // 1. Si está actualmente no operativo
+                // 2. Si tiene fallas en el período seleccionado
+                // 3. Si hay un filtro de estado específico
+                const mostrarPorEstado = !estado || medio.estadoActual.toLowerCase() === estado.toLowerCase();
+                const mostrarPorFallas = fallasPeriodo.length > 0;
+                const noOperativoActual = medio.estadoActual === "No operativo";
+
+                if ((noOperativoActual || mostrarPorFallas) && mostrarPorEstado) {
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td>${medio.linea}</td>
+                        <td>${medio.estacion}</td>
+                        <td>${medio.medio}</td>
+                        <td>${fallasPeriodo.length}</td>
+                        <td>${calcularTiempoPromedio(fallasPeriodo)}</td>
+                        <td class="status-${medio.estadoActual.toLowerCase().replace(' ', '-')}">${medio.estadoActual}</td>
+                        <td>${formatDate(medio.ultimaActualizacion)}</td>
+                    `;
+                }
+            });
+
+            // Actualizar estadísticas generales
+            const mediosFiltrados = Array.from(mediosMap.values()).filter(medio => {
+                if (linea && medio.linea !== linea) return false;
+                
+                const fallasPeriodo = medio.fallas.filter(falla => {
+                    const fechaFalla = falla.timestamp && falla.timestamp.seconds ? 
+                        new Date(falla.timestamp.seconds * 1000) : 
+                        new Date(falla.timestamp);
+                    return fechaFalla >= fechaLimite;
+                });
+
+                return fallasPeriodo.length > 0 || medio.estadoActual === "No operativo";
+            });
+
+            document.getElementById('totalFallas').textContent = mediosFiltrados.reduce((total, medio) => 
+                total + medio.fallas.filter(falla => {
+                    const fechaFalla = falla.timestamp && falla.timestamp.seconds ? 
+                        new Date(falla.timestamp.seconds * 1000) : 
+                        new Date(falla.timestamp);
+                    return fechaFalla >= fechaLimite;
+                }).length, 0);
+
+            document.getElementById('mediosNoOperativos').textContent = mediosFiltrados.filter(m => m.estadoActual === "No operativo").length;
+
+            // Actualizar gráfico con datos filtrados
+            actualizarGrafico();
+        }
+
+        // Función para ordenar la tabla
+        function sortTable(column) {
+            const tbody = document.getElementById('mediosTableBody');
+            const rows = Array.from(tbody.getElementsByTagName('tr'));
+            const ths = document.querySelectorAll('th');
+            
+            // Limpiar indicadores de sorting previos
+            ths.forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+
+            // Actualizar dirección de sorting
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            // Agregar indicador visual de sorting
+            const th = document.querySelector(`th[data-sort="${column}"]`);
+            th.classList.add(`sort-${currentSort.direction}`);
+
+            // Ordenar filas
+            rows.sort((a, b) => {
+                let valueA, valueB;
+                const cells = {
+                    a: a.getElementsByTagName('td'),
+                    b: b.getElementsByTagName('td')
+                };
+
+                switch(column) {
+                    case 'linea':
+                        valueA = cells.a[0].textContent;
+                        valueB = cells.b[0].textContent;
+                        break;
+                    case 'estacion':
+                        valueA = cells.a[1].textContent;
+                        valueB = cells.b[1].textContent;
+                        break;
+                    case 'medio':
+                        valueA = cells.a[2].textContent;
+                        valueB = cells.b[2].textContent;
+                        break;
+                    case 'fallas':
+                        valueA = parseInt(cells.a[3].textContent) || 0;
+                        valueB = parseInt(cells.b[3].textContent) || 0;
+                        break;
+                    case 'tiempo':
+                        // Convertir "Xh Ym" a minutos totales para comparación
+                        valueA = parseTiempoFalla(cells.a[4].textContent);
+                        valueB = parseTiempoFalla(cells.b[4].textContent);
+                        break;
+                    case 'estado':
+                        valueA = cells.a[5].textContent;
+                        valueB = cells.b[5].textContent;
+                        break;
+                    case 'actualizacion':
+                        valueA = new Date(cells.a[6].textContent).getTime() || 0;
+                        valueB = new Date(cells.b[6].textContent).getTime() || 0;
+                        break;
+                    default:
+                        valueA = valueB = '';
+                }
+
+                if (valueA === valueB) return 0;
+                
+                const comparison = valueA > valueB ? 1 : -1;
+                return currentSort.direction === 'asc' ? comparison : -comparison;
+            });
+
+            // Reordenar DOM
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        // Función auxiliar para convertir tiempo de falla a minutos
+        function parseTiempoFalla(tiempo) {
+            if (tiempo === '-') return 0;
+            
+            const match = tiempo.match(/(?:(\d+)h)?\s*(?:(\d+)m)?/);
+            if (!match) return 0;
+            
+            const horas = parseInt(match[1]) || 0;
+            const minutos = parseInt(match[2]) || 0;
+            return horas * 60 + minutos;
+        }
+
+        // Función para actualizar el gráfico
+        function actualizarGrafico() {
+            const ctx = document.getElementById('trendsChart').getContext('2d');
+            
+            // Agrupar fallas por día
+            const fallasPorDia = {};
+            currentData.historial.forEach(cambio => {
+                if (cambio.estado === "No operativo") {
+                    const fecha = new Date(cambio.timestamp).toLocaleDateString();
+                    fallasPorDia[fecha] = (fallasPorDia[fecha] || 0) + 1;
+                }
+            });
+
+            // Preparar datos para el gráfico
+            const labels = Object.keys(fallasPorDia).sort();
+            const data = labels.map(fecha => fallasPorDia[fecha]);
+
+            // Destruir gráfico anterior si existe
+            if (trendsChart) {
+                trendsChart.destroy();
+            }
+
+            // Crear nuevo gráfico
+            trendsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Fallas por día',
+                        data: data,
+                        borderColor: '#007bff',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Tendencia de Fallas'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
             });
         }
 
-        // Llamar a obtenerHistorial al cargar la página
-        window.onload = obtenerHistorial;
+        // Agregar event listeners para filtros
+        document.getElementById('lineaFilter').addEventListener('change', aplicarFiltros);
+        document.getElementById('periodoFilter').addEventListener('change', aplicarFiltros);
+        document.getElementById('estadoFilter').addEventListener('change', aplicarFiltros);
+
+        // Agregar event listeners para sorting
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const column = th.getAttribute('data-sort');
+                sortTable(column);
+            });
+        });
+
+        // Cargar datos iniciales
+        window.onload = cargarDatos;
     </script>
-</head>
-<body>
-    <h1>Historial de Cambios de Estado</h1>
-    <div id="historial"></div>
 </body>
 </html>

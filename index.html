@@ -6,8 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
   <!-- Agregar en el <head> de tu index.html -->
-  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+      
     
   <script>
     // Configuración de Firebase
@@ -60,7 +61,7 @@
     body {
       font-family: Arial, sans-serif;
       margin: 0;
-      padding: 0;
+      padding: 20px;
       background-color: white;
     }
     h1 {
@@ -130,6 +131,26 @@
     #error-msg {
       color: red;
     }
+    .button-container {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background-color: #007bff;
+      color: white;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
   </style>
 </head>
 
@@ -153,9 +174,11 @@
   <!-- Tooltip único para todos los indicadores -->
   <div id="global-tooltip"></div>
 
-  <script>
-    const API_URL = "https://aplicacioneswp.metrovias.com.ar/APIAccesibilidad/Accesibilidad.svc/GetLineas";
+  <div class="button-container">
+    <button id="btn-historial" onclick="window.location.href='historial.html'">Ver historial de cambios</button>
+  </div>
 
+  <script>
     /**
      * A continuación se detallan las coordenadas aproximadas de cada estación
      * de las líneas A, B, C, D, E y H. Las posiciones son sólo de ejemplo.
@@ -273,301 +296,291 @@
     };
 
     /**
-     * Datos anteriores para comparación.
-     * @type {Object}
+     * Función principal para obtener datos desde Firebase y renderizar en la página
      */
-    let datosAnteriores = null;
-    function detectarCambios(datosAnteriores, datosNuevos) {
-      console.log("Detectando cambios...");
-      
-      // Variable para contar la cantidad de cambios detectados
-      let contadorCambios = 0;
-      
-      datosNuevos.forEach(lineaNueva => {
-        const lineaAnterior = datosAnteriores.find(l => l.nombre === lineaNueva.nombre);
-        if (!lineaAnterior) {
-          // Línea nueva completa (caso muy raro). Podrías tomarlo como muchos cambios
-          return;
+    async function obtenerDatos() {
+        console.log("Iniciando obtención de datos...");
+        try {
+            const docRef = await db.collection("estadoActual").doc("estado").get();
+            
+            if (docRef.exists) {
+                const datos = docRef.data();
+                console.log("Datos obtenidos:", datos);
+                
+                if (datos && Array.isArray(datos.estado)) {
+                    renderizarIndicadores(datos.estado);
+                    
+                    // Actualizar el estado anterior y mostrar cambios
+                    if (estadoAnterior) {
+                        mostrarCambios(estadoAnterior, datos.estado);
+                    }
+                    estadoAnterior = datos.estado;
+                    
+                    document.getElementById('loading').style.display = 'none';
+                } else {
+                    console.error("El documento no tiene el formato esperado:", datos);
+                    document.getElementById('loading').textContent = 'Error en el formato de datos';
+                }
+            } else {
+                console.error("No se encontró el documento de estado");
+                document.getElementById('loading').textContent = 'No hay datos disponibles';
+            }
+        } catch (error) {
+            console.error("Error al obtener datos:", error);
+            document.getElementById('loading').textContent = 'Error al cargar datos';
         }
-
-        lineaNueva.estaciones.forEach(estacionNueva => {
-          const estacionAnterior = lineaAnterior.estaciones.find(e => e.nombre === estacionNueva.nombre);
-          if (!estacionAnterior) {
-            // Estación completamente nueva
-            return;
-          }
-
-          estacionNueva.accesos.forEach(accesoNuevo => {
-            const accesoAnterior = estacionAnterior.accesos.find(a => a.descripcion === accesoNuevo.descripcion);
-            
-            // 1. Acceso nuevo
-            if (!accesoAnterior) {
-              registrarCambio(
-                lineaNueva.nombre, 
-                estacionNueva.nombre, 
-                accesoNuevo.descripcion, 
-                accesoNuevo.funcionando ? "Operativo" : "No operativo"
-              );
-              contadorCambios++;
-              return;
-            }
-            
-            // 2. Cambio de estado
-            if (accesoNuevo.funcionando !== accesoAnterior.funcionando) {
-              const estado = accesoNuevo.funcionando ? "Operativo" : "No operativo";
-              registrarCambio(
-                lineaNueva.nombre, 
-                estacionNueva.nombre, 
-                accesoNuevo.descripcion, 
-                estado
-              );
-              contadorCambios++;
-            }
-          });
-        });
-      });
-
-      // Al final, logueás la cantidad de cambios detectados en este ciclo
-      if (contadorCambios > 0) {
-        console.log(`Se detectaron ${contadorCambios} cambios en esta actualización.`);
-      } else {
-        console.log("No se detectaron cambios en esta actualización.");
-      }
     }
 
     /**
-     * Función principal para obtener datos desde la API y renderizar en la página.
+     * Función para comparar estados y mostrar cambios
      */
-    async function obtenerDatos() {
-      const loader = document.getElementById("loading");
-      const errorMsg = document.getElementById("error-msg");
+    function mostrarCambios(estadoAnterior, estadoNuevo) {
+        console.log("Comparando estados:", { anterior: estadoAnterior, nuevo: estadoNuevo });
+        if (!estadoAnterior) return;
+        
+        estadoNuevo.forEach(lineaNueva => {
+            const lineaAnterior = estadoAnterior.find(l => l.nombre === lineaNueva.nombre);
+            if (!lineaAnterior) return;
 
-      loader.style.display = "block";
-      errorMsg.style.display = "none";
+            lineaNueva.estaciones.forEach(estacionNueva => {
+                const estacionAnterior = lineaAnterior.estaciones.find(e => e.nombre === estacionNueva.nombre);
+                if (!estacionAnterior) return;
 
-      try {
-        const respuesta = await fetch(API_URL);
-        if (!respuesta.ok) {
-          throw new Error(`Error HTTP: ${respuesta.status}`);
-        }
-        const datos = await respuesta.json();
-        // Si no es la primera llamada, comparamos con datosAnteriores
-        if (datosAnteriores) {
-          // Lógica de comparación entre datosAnteriores y datos 
-          // para ver si hubo cambios
-          detectarCambios(datosAnteriores, datos);
-        }
-        // Actualizar datosAnteriores con los datos actuales
-        datosAnteriores = datos;
-        renderizarIndicadores(datos);
-      } catch (error) {
-        console.error("Error al obtener los datos:", error);
-        errorMsg.textContent = "No se pudieron cargar los datos de accesibilidad.";
-        errorMsg.style.display = "block";
-      } finally {
-        loader.style.display = "none";
-      }
+                estacionNueva.accesos.forEach(accesoNuevo => {
+                    const accesoAnterior = estacionAnterior.accesos.find(a => a.descripcion === accesoNuevo.descripcion);
+                    if (!accesoAnterior) return;
+
+                    // Comparar usando la propiedad funcionando
+                    if (accesoNuevo.funcionando !== accesoAnterior.funcionando) {
+                        console.log(`Cambio detectado en ${lineaNueva.nombre} - ${estacionNueva.nombre}:`);
+                        console.log(`${accesoNuevo.descripcion}: ${accesoAnterior.funcionando ? "Operativo" : "No operativo"} → ${accesoNuevo.funcionando ? "Operativo" : "No operativo"}`);
+                        console.log(`Estado anterior: ${accesoAnterior.estado}, Estado nuevo: ${accesoNuevo.estado}`);
+                    }
+                });
+            });
+        });
     }
 
     /**
      * Renderiza los indicadores en cada contenedor de línea, según los datos obtenidos.
      */
     function renderizarIndicadores(datosLineas) {
-      datosLineas.forEach(linea => {
-        // Ejemplo "Línea A" => "A"
-        const nombreLinea = linea.nombre.split(" ")[1];
-        const contenedorMapa = document.getElementById(`mapa${nombreLinea}`);
-        if (!contenedorMapa) return;
-
-        // Obtener coordenadas definidas para esta línea
-        const coordsLinea = coordenadasPorLinea[linea.nombre];
-        if (!coordsLinea) return;
-
-        // Limpiar indicadores previos (si el setInterval los vuelve a renderizar)
-        while (contenedorMapa.firstChild) {
-          contenedorMapa.removeChild(contenedorMapa.firstChild);
+        // Asegurarnos que datosLineas es un array
+        if (!Array.isArray(datosLineas)) {
+            console.error('datosLineas debe ser un array:', datosLineas);
+            return;
         }
 
-        // Crear un indicador por estación
-        linea.estaciones.forEach(estacion => {
-          const coord = coordsLinea.find(c => c.nombre === estacion.nombre);
-          if (!coord) return; // Si no hay coordenada configurada, se omite
+        console.log('Renderizando indicadores con datos:', datosLineas);
 
-          const colorClase = determinarColorEstacion(estacion);
+        datosLineas.forEach(linea => {
+            // Ejemplo "Línea A" => "A"
+            const nombreLinea = linea.nombre.split(" ")[1];
+            const contenedorMapa = document.getElementById(`mapa${nombreLinea}`);
+            if (!contenedorMapa) {
+                console.log(`No se encontró el contenedor para la línea ${nombreLinea}`);
+                return;
+            }
 
-          const indicador = document.createElement("div");
-          indicador.classList.add("indicador", colorClase);
-          indicador.style.left = `${coord.x}%`;
-          indicador.style.top = `${coord.y}%`;
+            // Obtener coordenadas definidas para esta línea
+            const coordsLinea = coordenadasPorLinea[linea.nombre];
+            if (!coordsLinea) {
+                console.log(`No hay coordenadas definidas para la línea ${linea.nombre}`);
+                return;
+            }
 
-          // Eventos para mostrar/ocultar tooltip
-          indicador.addEventListener("mouseover", (event) => {
-            mostrarTooltip(event, estacion);
-          });
-          indicador.addEventListener("mousemove", (event) => {
-            moverTooltip(event);
-          });
-          indicador.addEventListener("mouseout", ocultarTooltip);
+            // Limpiar indicadores previos
+            while (contenedorMapa.firstChild) {
+                contenedorMapa.removeChild(contenedorMapa.firstChild);
+            }
 
-          contenedorMapa.appendChild(indicador);
+            // Crear un indicador por estación
+            linea.estaciones.forEach(estacion => {
+                const coord = coordsLinea.find(c => c.nombre === estacion.nombre);
+                if (!coord) {
+                    console.log(`No hay coordenadas para la estación ${estacion.nombre}`);
+                    return;
+                }
+
+                const colorClase = determinarColorEstacion(estacion);
+
+                const indicador = document.createElement("div");
+                indicador.classList.add("indicador", colorClase);
+                indicador.style.left = `${coord.x}%`;
+                indicador.style.top = `${coord.y}%`;
+
+                // Eventos para mostrar/ocultar tooltip
+                indicador.addEventListener("mouseover", (event) => {
+                    mostrarTooltip(event, estacion);
+                });
+                indicador.addEventListener("mousemove", (event) => {
+                    moverTooltip(event);
+                });
+                indicador.addEventListener("mouseout", ocultarTooltip);
+
+                contenedorMapa.appendChild(indicador);
+            });
         });
-      });
     }
 
     /**
      * Determina el color del indicador según la cantidad de accesos funcionando / no funcionando.
      */
     function determinarColorEstacion(estacion) {
-      let funcionando = 0;
-      let noFuncionando = 0;
+        let funcionando = 0;
+        let noFuncionando = 0;
 
-      estacion.accesos.forEach(acceso => {
-        if (acceso.funcionando) {
-          funcionando++;
+        estacion.accesos.forEach(acceso => {
+            if (acceso.funcionando) {
+                funcionando++;
+            } else {
+                noFuncionando++;
+            }
+        });
+
+        if (funcionando === 0 && noFuncionando > 0) {
+            return "rojo";
+        } else if (funcionando > 0 && noFuncionando > 0) {
+            return "naranja";
         } else {
-          noFuncionando++;
+            return "verde";
         }
-      });
-
-      if (funcionando === 0 && noFuncionando > 0) {
-        return "rojo";
-      } else if (funcionando > 0 && noFuncionando > 0) {
-        return "naranja";
-      } else {
-        return "verde";
-      }
     }
 
     /**
      * Muestra el tooltip único con la información de la estación.
      */
     function mostrarTooltip(event, estacion) {
-      const tooltip = document.getElementById("global-tooltip");
-      tooltip.innerHTML = crearContenidoTooltip(estacion);
-      tooltip.style.display = "block";
-      moverTooltip(event);
+        const tooltip = document.getElementById("global-tooltip");
+        tooltip.innerHTML = crearContenidoTooltip(estacion);
+        tooltip.style.display = "block";
+        moverTooltip(event);
     }
 
-/**
- * Toma la cadena estilo "/Date(1737051155790-0300)/"
- * y devuelve algo como "hace 10 min."
- */
- function calcularTiempoTranscurrido(dateStr) {
-  // 1) Extraemos el timestamp con una expresión regular
-  //    dateStr típicamente es "/Date(1737051155790-0300)/"
-  const match = dateStr.match(/\/Date\((\d+)([-+]\d+)\)\//);
-  if (!match) return ""; // Por si falla
-  
-  // match[1] = "1737051155790" (el tiempo en ms)
-  // match[2] = "-0300" (la zona horaria)
-  const timestamp = parseInt(match[1], 10);
-  
-  // 2) Convertimos a Date de JavaScript
-  const fecha = new Date(timestamp);
-  
-  // 3) Calculamos diferencia en milisegundos respecto a "ahora"
-  const ahora = Date.now();
-  const diffMs = ahora - fecha.getTime();
-  
-  // Si diffMs es negativo, la fecha es "futura" → ajusta si lo deseas
-  if (diffMs < 0) return "recién actualizado";
+    /**
+     * Toma la cadena estilo "/Date(1737051155790-0300)/"
+     * y devuelve algo como "hace 10 min."
+     */
+    function calcularTiempoTranscurrido(dateStr) {
+        // 1) Extraemos el timestamp con una expresión regular
+        //    dateStr típicamente es "/Date(1737051155790-0300)/"
+        const match = dateStr.match(/\/Date\((\d+)([-+]\d+)\)\//);
+        if (!match) return ""; // Por si falla
+        
+        // match[1] = "1737051155790" (el tiempo en ms)
+        // match[2] = "-0300" (la zona horaria)
+        const timestamp = parseInt(match[1], 10);
+        
+        // 2) Convertimos a Date de JavaScript
+        const fecha = new Date(timestamp);
+        
+        // 3) Calculamos diferencia en milisegundos respecto a "ahora"
+        const ahora = Date.now();
+        const diffMs = ahora - fecha.getTime();
+        
+        // Si diffMs es negativo, la fecha es "futura" → ajusta si lo deseas
+        if (diffMs < 0) return "recién actualizado";
 
-  // 4) Convertimos a minutos
-  const diffMin = Math.floor(diffMs / 1000 / 60);
-  if (diffMin < 1) {
-    return "hace menos de 1 min.";
-  }
-  if (diffMin < 60) {
-    return `hace ${diffMin} min.`;
-  }
-  
-  // Más de 60 minutos → calculamos horas
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) {
-    return `hace ${diffH} h.`;
-  }
-  
-  // Más de 24 horas → calculamos días
-  const diffD = Math.floor(diffH / 24);
-  return `hace ${diffD} d.`;
-}
+        // 4) Convertimos a minutos
+        const diffMin = Math.floor(diffMs / 1000 / 60);
+        if (diffMin < 1) {
+            return "hace menos de 1 min.";
+        }
+        if (diffMin < 60) {
+            return `hace ${diffMin} min.`;
+        }
+        
+        // Más de 60 minutos → calculamos horas
+        const diffH = Math.floor(diffMin / 60);
+        if (diffH < 24) {
+            return `hace ${diffH} h.`;
+        }
+        
+        // Más de 24 horas → calculamos días
+        const diffD = Math.floor(diffH / 24);
+        return `hace ${diffD} d.`;
+    }
 
+    /**
+     * Crea el HTML interno para el tooltip.
+     */
+    function crearContenidoTooltip(estacion) {
+        const accesosHtml = estacion.accesos.map(acceso => {
+            const clase = acceso.funcionando ? "operativo" : "no-operativo";
+            
+            // Obtenemos la frase de tiempo transcurrido
+            const tiempoTranscurrido = calcularTiempoTranscurrido(acceso.fechaActualizacion);
 
-/**
- * Crea el HTML interno para el tooltip.
- */
- function crearContenidoTooltip(estacion) {
-  const accesosHtml = estacion.accesos.map(acceso => {
-    const clase = acceso.funcionando ? "operativo" : "no-operativo";
-    
-    // Obtenemos la frase de tiempo transcurrido
-    const tiempoTranscurrido = calcularTiempoTranscurrido(acceso.fechaActualizacion);
+            // Retornamos texto completo con " - hace 10 min." (por ejemplo)
+            return `
+                <span class="acceso ${clase}">
+                    ${acceso.descripcion} - ${tiempoTranscurrido}
+                </span>
+            `;
+        }).join("");
 
-    // Retornamos texto completo con " - hace 10 min." (por ejemplo)
-    return `
-      <span class="acceso ${clase}">
-        ${acceso.descripcion} - ${tiempoTranscurrido}
-      </span>
-    `;
-  }).join("");
+        return `
+            <strong>${estacion.nombre}</strong>
+            <br>
+            ${accesosHtml}
+        `;
+    }
 
-  return `
-    <strong>${estacion.nombre}</strong>
-    <br>
-    ${accesosHtml}
-  `;
-}
+    /**
+     * Posiciona el tooltip teniendo en cuenta el espacio disponible
+     * para mostrarlo arriba o abajo del cursor.
+     */
+    function moverTooltip(event) {
+        const tooltip = document.getElementById("global-tooltip");
+        const offset = 10; // Separación entre cursor y tooltip
 
-/**
- * Posiciona el tooltip teniendo en cuenta el espacio disponible
- * para mostrarlo arriba o abajo del cursor.
- */
-function moverTooltip(event) {
-  const tooltip = document.getElementById("global-tooltip");
-  const offset = 10; // Separación entre cursor y tooltip
+        // Aseguramos que el tooltip esté visible para medir su tamaño real:
+        tooltip.style.display = "block";
 
-  // Aseguramos que el tooltip esté visible para medir su tamaño real:
-  tooltip.style.display = "block";
+        // Medimos el rectángulo del tooltip (anchura, altura, etc.)
+        const tooltipRect = tooltip.getBoundingClientRect();
 
-  // Medimos el rectángulo del tooltip (anchura, altura, etc.)
-  const tooltipRect = tooltip.getBoundingClientRect();
+        // Calculamos el espacio disponible entre el cursor y la parte inferior de la ventana:
+        const espacioAbajo = window.innerHeight - event.clientY;
 
-  // Calculamos el espacio disponible entre el cursor y la parte inferior de la ventana:
-  const espacioAbajo = window.innerHeight - event.clientY;
+        let top;
 
-  let top;
+        // Si NO hay suficiente espacio debajo para mostrar el tooltip, lo ponemos arriba.
+        if (espacioAbajo < tooltipRect.height + offset) {
+            top = event.pageY - tooltipRect.height - offset;
+        } else {
+            // De lo contrario, lo ubicamos debajo del cursor.
+            top = event.pageY + offset;
+        }
 
-  // Si NO hay suficiente espacio debajo para mostrar el tooltip, lo ponemos arriba.
-  if (espacioAbajo < tooltipRect.height + offset) {
-    top = event.pageY - tooltipRect.height - offset;
-  } else {
-    // De lo contrario, lo ubicamos debajo del cursor.
-    top = event.pageY + offset;
-  }
+        // Posición horizontal sencilla (a la derecha del cursor).
+        // Si quieres evitar que se corte a la derecha, podrías hacer lógica similar
+        // midiendo window.innerWidth, tooltipRect.width, etc.
+        const left = event.pageX + offset;
 
-  // Posición horizontal sencilla (a la derecha del cursor).
-  // Si quieres evitar que se corte a la derecha, podrías hacer lógica similar
-  // midiendo window.innerWidth, tooltipRect.width, etc.
-  const left = event.pageX + offset;
+        // Aplicamos las coordenadas calculadas.
+        tooltip.style.top = top + "px";
+        tooltip.style.left = left + "px";
+    }
 
-  // Aplicamos las coordenadas calculadas.
-  tooltip.style.top = top + "px";
-  tooltip.style.left = left + "px";
-}
+    /**
+     * Oculta el tooltip al salir del indicador.
+     */
+    function ocultarTooltip() {
+        const tooltip = document.getElementById("global-tooltip");
+        tooltip.style.display = "none";
+    }
 
-/**
- * Oculta el tooltip al salir del indicador.
- */
-function ocultarTooltip() {
-  const tooltip = document.getElementById("global-tooltip");
-  tooltip.style.display = "none";
-}
+    let estadoAnterior = null;
 
+    document.getElementById('btn-historial').addEventListener('click', async () => {
+        window.location.href='historial.html';
+    });
 
-    // Llamada inicial
+    // Iniciar la obtención de datos inmediatamente
     obtenerDatos();
 
-    // Actualizar indicadores cada 30 segundos
+    // Actualizar datos cada 30 segundos
     setInterval(obtenerDatos, 30000);
   </script>
 </body>
