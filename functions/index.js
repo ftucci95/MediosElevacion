@@ -1,8 +1,17 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const { obtenerHorarioServicio, estaEnHorarioServicio, calcularTiempoServicioDiario } = require('./horarios');
 
 admin.initializeApp();
+
+const runtimeOpts = {
+  timeoutSeconds: 300,
+  memory: '256MB',
+  minInstances: 0,
+  maxInstances: 1,
+  region: 'southamerica-east1'
+};
 
 // Función para listar buckets
 exports.listBuckets = functions
@@ -25,14 +34,6 @@ exports.listBuckets = functions
       res.status(500).send('Error getting bucket: ' + error.message);
     }
   });
-
-const runtimeOpts = {
-  timeoutSeconds: 60,
-  memory: '256MB',
-  minInstances: 0,
-  maxInstances: 1,
-  region: 'southamerica-east1'
-};
 
 // Función para escribir logs
 async function writeToLog(message) {
@@ -72,19 +73,37 @@ async function compararEstados(estadoAnterior, estadoNuevo, db) {
     return cambios;
   }
 
+  // Crear un mapa del estado anterior para búsquedas O(1)
+  const accesoMap = new Map();
+  if (Array.isArray(estadoAnterior)) {
+    estadoAnterior.forEach(linea => {
+      (linea.estaciones || []).forEach(estacion => {
+        (estacion.accesos || []).forEach(acceso => {
+          const key = `${linea.nombre}|${estacion.nombre}|${acceso.descripcion}`;
+          accesoMap.set(key, acceso);
+        });
+      });
+    });
+  }
+
+  // Iterar sobre el estado nuevo y comparar con el mapa
   for (const linea of estadoNuevo) {
     for (const estacion of linea.estaciones || []) {
       for (const acceso of estacion.accesos || []) {
-        const accesoAnterior = estadoAnterior
-          ?.find(l => l.nombre === linea.nombre)
-          ?.estaciones?.find(e => e.nombre === estacion.nombre)
-          ?.accesos?.find(a => a.descripcion === acceso.descripcion);
+        const key = `${linea.nombre}|${estacion.nombre}|${acceso.descripcion}`;
+        const accesoAnterior = accesoMap.get(key);
 
         // Solo logueamos si hay un cambio de estado
         if (!accesoAnterior || accesoAnterior.funcionando !== acceso.funcionando) {
-          const mensaje = `${linea.nombre} - ${estacion.nombre} - ${acceso.descripcion}: ${accesoAnterior?.funcionando ? 'Operativo' : 'No existe/No operativo'} -> ${acceso.funcionando ? 'Operativo' : 'No operativo'}`;
+          const timestamp = new Date().toISOString();
+          const mensaje = `${linea.nombre} - ${estacion.nombre} - ${acceso.descripcion}: ${
+            accesoAnterior?.funcionando ? 'Operativo' : 'No existe/No operativo'
+          } -> ${
+            acceso.funcionando ? 'Operativo' : 'No operativo'
+          }`;
           await writeToLog(mensaje);
           
+          // Si pasó de no operativo a operativo, actualizar el timestampResolucion
           if (accesoAnterior && !accesoAnterior.funcionando && acceso.funcionando) {
             try {
               const querySnapshot = await db.collection("historialCambios")
@@ -99,7 +118,7 @@ async function compararEstados(estadoAnterior, estadoNuevo, db) {
 
               if (!querySnapshot.empty) {
                 await querySnapshot.docs[0].ref.update({
-                  timestampResolucion: new Date().toISOString()
+                  timestampResolucion: timestamp
                 });
                 await writeToLog(`  ✓ Resuelto: Se actualizó timestampResolucion`);
               } else {
@@ -110,14 +129,47 @@ async function compararEstados(estadoAnterior, estadoNuevo, db) {
             }
           }
 
+          // Registrar el cambio en historialCambios
           cambios.push({
             linea: linea.nombre,
             estacion: estacion.nombre,
             medioElevacion: acceso.descripcion,
             estado: acceso.funcionando ? "Operativo" : "No operativo",
-            timestamp: new Date().toISOString(),
+            timestamp: timestamp,
             timestampResolucion: null
           });
+
+          // Actualizar estadísticas diarias
+          try {
+            const fecha = timestamp.split('T')[0];
+            const estadisticaQuery = await db.collection("estadisticasDiarias")
+              .where("fecha", "==", fecha)
+              .where("linea", "==", linea.nombre)
+              .where("estacion", "==", estacion.nombre)
+              .where("medioElevacion", "==", acceso.descripcion)
+              .limit(1)
+              .get();
+
+            if (!estadisticaQuery.empty) {
+              const doc = estadisticaQuery.docs[0];
+              const estadisticas = doc.data().estadisticas;
+              
+              // Agregar nuevo estado
+              estadisticas.estados.push({
+                timestamp: timestamp,
+                estado: acceso.funcionando ? "Operativo" : "No operativo"
+              });
+
+              // Si estamos en horario de servicio y pasa a no operativo, incrementar contador
+              if (!acceso.funcionando && estaEnHorarioServicio(linea.nombre, timestamp)) {
+                estadisticas.cantidadFallas++;
+              }
+
+              await doc.ref.update({ estadisticas });
+            }
+          } catch (error) {
+            await writeToLog(`Error actualizando estadísticas diarias: ${error.message}`);
+          }
         }
       }
     }
@@ -158,6 +210,56 @@ exports.downloadLogs = functions
     }
   });
 
+// Función para inicializar estadísticas diarias si no existen
+async function iniciarEstadisticasDiarias(db, estado) {
+  const fecha = new Date().toISOString().split('T')[0];
+  
+  try {
+    // Verificar si ya existen estadísticas para hoy
+    const existingStats = await db.collection("estadisticasDiarias")
+      .where("fecha", "==", fecha)
+      .limit(1)
+      .get();
+    
+    if (!existingStats.empty) {
+      return; // Ya existen estadísticas para hoy
+    }
+
+    // Crear documentos para cada medio
+    const batch = db.batch();
+    estado.forEach(linea => {
+      linea.estaciones.forEach(estacion => {
+        estacion.accesos.forEach(acceso => {
+          const docRef = db.collection("estadisticasDiarias").doc();
+          batch.set(docRef, {
+            fecha,
+            linea: linea.nombre,
+            estacion: estacion.nombre,
+            medioElevacion: acceso.descripcion,
+            horaInicioServicio: obtenerHorarioServicio(linea.nombre).inicio,
+            horaFinServicio: obtenerHorarioServicio(linea.nombre).fin,
+            estadisticas: {
+              tiempoTotalServicio: calcularTiempoServicioDiario(linea.nombre),
+              tiempoNoOperativo: 0,
+              cantidadFallas: 0,
+              estados: [{
+                timestamp: new Date().toISOString(),
+                estado: acceso.funcionando ? "Operativo" : "No operativo"
+              }]
+            }
+          });
+        });
+      });
+    });
+    
+    await batch.commit();
+    await writeToLog(`Estadísticas diarias iniciadas para ${fecha}`);
+  } catch (error) {
+    await writeToLog(`Error iniciando estadísticas diarias: ${error.message}`);
+    throw error;
+  }
+}
+
 exports.detectarCambios = functions
   .runWith(runtimeOpts)
   .region('southamerica-east1')
@@ -165,6 +267,7 @@ exports.detectarCambios = functions
   .timeZone("America/Argentina/Buenos_Aires")
   .onRun(async (context) => {
     const db = admin.firestore();
+    
     try {
       // 1. Recibe los datos a través de la API
       const apiUrl = "https://aplicacioneswp.metrovias.com.ar/APIAccesibilidad/Accesibilidad.svc/GetLineas";
@@ -175,7 +278,10 @@ exports.detectarCambios = functions
       const estadoDoc = await db.collection("estadoActual").doc("estado").get();
       const estadoAnterior = estadoDoc.exists ? estadoDoc.data().estado : null;
 
-      // 3. Si no hay estado anterior, guardar el estado actual completo
+      // 3. Inicializar estadísticas si no existen
+      await iniciarEstadisticasDiarias(db, estadoNuevo);
+
+      // 4. Si no hay estado anterior, guardar el estado actual completo
       if (!estadoAnterior) {
         // Agregar fechaActualizacion a cada acceso
         const estadoConFechas = estadoNuevo.map(linea => ({
@@ -196,10 +302,10 @@ exports.detectarCambios = functions
         return null;
       }
 
-      // 4. Comparar estados y detectar cambios
+      // 5. Comparar estados y detectar cambios
       const cambios = await compararEstados(estadoAnterior, estadoNuevo, db);
 
-      // 5. Preparar el nuevo estado con fechas de actualización
+      // 6. Preparar el nuevo estado con fechas de actualización
       const estadoConFechas = estadoNuevo.map(linea => {
         return {
           ...linea,
@@ -234,7 +340,7 @@ exports.detectarCambios = functions
         };
       });
 
-      // 6. Actualizar estado en una transacción
+      // 7. Actualizar estado en una transacción
       try {
         await db.runTransaction(async (transaction) => {
           // Guardar el nuevo estado
@@ -273,5 +379,115 @@ exports.detectarCambios = functions
         });
       }
       throw error;
+    }
+  });
+
+// Nueva función para cerrar estadísticas del día
+exports.cerrarEstadisticasDiarias = functions
+  .runWith(runtimeOpts)
+  .region('southamerica-east1')
+  .pubsub.schedule("59 23 * * *")
+  .timeZone("America/Argentina/Buenos_Aires")
+  .onRun(async (context) => {
+    const db = admin.firestore();
+    const fecha = new Date().toISOString().split('T')[0];
+    
+    try {
+      const snapshot = await db.collection("estadisticasDiarias")
+        .where("fecha", "==", fecha)
+        .get();
+
+      const batch = db.batch();
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const estados = data.estadisticas.estados;
+        let tiempoNoOperativo = 0;
+        
+        // Calcular tiempo no operativo durante horario de servicio
+        for (let i = 0; i < estados.length - 1; i++) {
+          if (estados[i].estado === "No operativo") {
+            const inicio = new Date(estados[i].timestamp);
+            const fin = new Date(estados[i + 1].timestamp);
+            
+            // Solo contar tiempo si estaba en horario de servicio
+            if (estaEnHorarioServicio(data.linea, estados[i].timestamp)) {
+              tiempoNoOperativo += fin - inicio;
+            }
+          }
+        }
+        
+        // Si el último estado es no operativo, contar hasta fin de servicio
+        const ultimoEstado = estados[estados.length - 1];
+        if (ultimoEstado.estado === "No operativo" && 
+            estaEnHorarioServicio(data.linea, ultimoEstado.timestamp)) {
+          const finServicio = new Date();
+          finServicio.setHours(23, 59, 59, 999);
+          tiempoNoOperativo += finServicio - new Date(ultimoEstado.timestamp);
+        }
+        
+        batch.update(doc.ref, {
+          'estadisticas.tiempoNoOperativo': tiempoNoOperativo
+        });
+      });
+      
+      await batch.commit();
+      await writeToLog(`Estadísticas diarias cerradas para ${fecha}`);
+    } catch (error) {
+      await writeToLog(`Error cerrando estadísticas diarias: ${error.message}`);
+      throw error;
+    }
+  });
+
+// Función para borrar estadísticas de un día específico
+exports.borrarEstadisticasDia = functions
+  .runWith(runtimeOpts)
+  .region('southamerica-east1')
+  .https.onRequest(async (req, res) => {
+    const db = admin.firestore();
+    const fecha = req.query.fecha || new Date().toISOString().split('T')[0];
+
+    try {
+      // Obtener todos los documentos de la fecha especificada
+      const snapshot = await db.collection("estadisticasDiarias")
+        .where("fecha", "==", fecha)
+        .get();
+
+      if (snapshot.empty) {
+        res.status(404).json({ message: `No hay estadísticas para la fecha ${fecha}` });
+        return;
+      }
+
+      // Borrar documentos en batches de 500 (límite de Firebase)
+      const batchArray = [];
+      let batch = db.batch();
+      let operationCount = 0;
+
+      snapshot.forEach(doc => {
+        batch.delete(doc.ref);
+        operationCount++;
+
+        if (operationCount === 500) {
+          batchArray.push(batch);
+          batch = db.batch();
+          operationCount = 0;
+        }
+      });
+
+      // Agregar el último batch si tiene operaciones pendientes
+      if (operationCount > 0) {
+        batchArray.push(batch);
+      }
+
+      // Ejecutar todos los batches
+      await Promise.all(batchArray.map(batch => batch.commit()));
+      
+      await writeToLog(`Borradas ${snapshot.size} estadísticas del día ${fecha}`);
+      res.json({ 
+        message: `Borradas ${snapshot.size} estadísticas del día ${fecha}`,
+        documentosBorrados: snapshot.size 
+      });
+    } catch (error) {
+      await writeToLog(`Error borrando estadísticas: ${error.message}`);
+      res.status(500).json({ error: error.message });
     }
   });

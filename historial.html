@@ -11,17 +11,56 @@
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             background-color: white;
+        }
+
+        .header {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: #333;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 20px;
         }
 
-        h1, h2 {
-            color: #333;
+        /* Estilo del botón fijo */
+        .fixed-button {
+            position: fixed;
+            padding: 12px 24px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease-out;
+            z-index: 1000;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+        }
+
+        .fixed-button:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
 
         .filters {
@@ -155,9 +194,11 @@
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="header">
         <h1>Historial de Cambios de Estado</h1>
-        
+    </div>
+    
+    <div class="container">
         <!-- Filtros -->
         <div class="filters">
             <select id="lineaFilter">
@@ -222,9 +263,54 @@
             <canvas id="trendsChart"></canvas>
         </div>
 
-        <div class="button-container">
-            <button onclick="window.location.href='index.html'">Volver al mapa</button>
-        </div>
+        <!-- Botón de volver -->
+        <button onclick="window.location.href='index.html'" class="fixed-button">Volver al Mapa</button>
+
+        <!-- Script para la animación del botón -->
+        <script>
+            let lastScrollTop = 0;
+            let scrolling = false;
+            const button = document.querySelector('.fixed-button');
+            let scrollDelta = 0;
+            let animationFrame;
+
+            window.addEventListener('scroll', function() {
+                if (!scrolling) {
+                    scrolling = true;
+                    animate();
+                }
+
+                const st = window.pageYOffset || document.documentElement.scrollTop;
+                scrollDelta = st - lastScrollTop;
+                lastScrollTop = st;
+            }, { passive: true });
+
+            function animate() {
+                // Calcular el desplazamiento basado en la velocidad del scroll
+                const displacement = Math.min(Math.max(-10, scrollDelta * 0.2), 10);
+                const scale = Math.max(0.9, 1 - Math.abs(scrollDelta) * 0.001);
+
+                button.style.transform = `translateY(${displacement}px) scale(${scale})`;
+
+                // Reducir gradualmente el efecto
+                scrollDelta *= 0.85;
+
+                if (Math.abs(scrollDelta) > 0.1) {
+                    animationFrame = requestAnimationFrame(animate);
+                } else {
+                    button.style.transform = '';
+                    scrolling = false;
+                    cancelAnimationFrame(animationFrame);
+                }
+            }
+
+            // Limpiar el frame de animación cuando se desmonte
+            window.addEventListener('unload', () => {
+                if (animationFrame) {
+                    cancelAnimationFrame(animationFrame);
+                }
+            });
+        </script>
     </div>
 
     <script>

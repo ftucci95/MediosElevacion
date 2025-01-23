@@ -126,10 +126,12 @@
         }
 
         .chart-container {
-            background: white;
+            width: 100%;
+            height: 400px;  
+            margin: 20px 0;
             padding: 20px;
+            background-color: white;
             border-radius: 8px;
-            margin-top: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
@@ -161,12 +163,54 @@
         .home-button:hover {
             background-color: #218838;
         }
+
+        /* Estilos del header */
+        .header {
+            background-color: #ffd700; /* Color amarillo */
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            width: 100%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            margin: 0;
+            color: #000;
+            font-size: 2em;
+        }
+
+        /* Estilo para el botón fijo */
+        .fixed-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease-out;
+            z-index: 1000;
+        }
+
+        .fixed-button:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Estadísticas de Medios de Elevación</h1>
-        
+        <!-- Header -->
+        <div class="header">
+            <h1>Estadísticas de Medios de Elevación</h1>
+        </div>
+
         <!-- Filtros -->
         <div class="filters">
             <select id="lineaFilter">
@@ -193,13 +237,18 @@
                 <div id="totalRegistros" class="stat-value">-</div>
             </div>
             <div class="stat-card">
-                <h3>Tiempo Detenido Hoy</h3>
+                <h3>Cuántos medios fallaron hoy</h3>
                 <div id="mediosNoOperativos" class="stat-value">-</div>
             </div>
             <div class="stat-card">
-                <h3>Disponibilidad del Día</h3>
+                <h3>Disponibilidad del día</h3>
                 <div id="disponibilidadPromedio" class="stat-value">-</div>
             </div>
+        </div>
+
+        <!-- Gráfico -->
+        <div class="chart-container">
+            <canvas id="statsChart"></canvas>
         </div>
 
         <!-- Tabla de estadísticas -->
@@ -218,34 +267,31 @@
             <tbody id="statsTableBody"></tbody>
         </table>
 
-        <!-- Contenedor para el gráfico -->
-        <div class="chart-container">
-            <canvas id="statsChart"></canvas>
-        </div>
+        <!-- Botón fijo de volver al inicio -->
+        <button onclick="window.location.href='index.html'" class="fixed-button">Volver al Inicio</button>
 
-        <!-- Botones de navegación -->
-        <div class="button-container">
-            <button onclick="window.location.href='index.html'" class="home-button">Volver al Inicio</button>
-        </div>
+        <div id="error-msg" style="display: none; color: red;"></div>
     </div>
 
     <script>
         // Configuración de Firebase
         const firebaseConfig = {
-            apiKey: "AIzaSyABQPwFyxEBbzFy1nXgmP_9DCOJ6Tl8XRs",
-            authDomain: "medioselevacion-1a482.firebaseapp.com",
-            projectId: "medioselevacion-1a482",
-            storageBucket: "medioselevacion-1a482.appspot.com",
-            messagingSenderId: "30574051443",
-            appId: "1:30574051443:web:e7f5b6c6c7b4405e8db710",
-            measurementId: "G-KQXMBG7TF0"
+            apiKey: "AIzaSyDvXfQcRKFwc9XFVwVKSnCjl9im3zU2fvY",
+            authDomain: "medioselevacion-sbase.firebaseapp.com",
+            projectId: "medioselevacion-sbase",
+            storageBucket: "medioselevacion-sbase.firebasestorage.app",
+            messagingSenderId: "1082577847683",
+            appId: "1:1082577847683:web:d15b05a15983d674d962b6",
+            measurementId: "G-4XK7D02G0Y"
         };
 
         // Inicializar Firebase
-        firebase.initializeApp(firebaseConfig);
+        const app = firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
-        let chart = null;
+
+        // Variables globales
         let currentData = [];
+        let chart = null;
         let sortColumn = '';
         let sortDirection = 'asc';
 
@@ -295,75 +341,241 @@
                 .toISOString().split('T')[0];
         }
 
+        // Función para calcular tiempo no operativo en tiempo real
+        function calcularTiempoNoOperativoReal(estados, horaInicio, horaFin) {
+            console.log('Calculando tiempo no operativo para estados:', estados);
+            console.log('Horario de servicio:', horaInicio, 'a', horaFin);
+            
+            if (!estados || estados.length === 0) {
+                console.log('No hay estados para calcular');
+                return 0;
+            }
+            
+            let tiempoNoOperativo = 0;
+            const fechaActual = new Date();
+            
+            // Convertir horas de servicio a Date objects del día actual
+            const [horaInicioH, horaInicioM] = horaInicio.split(':').map(Number);
+            const [horaFinH, horaFinM] = horaFin.split(':').map(Number);
+            
+            const inicioServicio = new Date(estados[0].timestamp);
+            inicioServicio.setHours(horaInicioH, horaInicioM, 0, 0);
+            
+            const finServicio = new Date(estados[0].timestamp);
+            finServicio.setHours(horaFinH, horaFinM, 0, 0);
+
+            console.log('Inicio servicio:', inicioServicio);
+            console.log('Fin servicio:', finServicio);
+
+            // Iterar sobre los estados
+            for (let i = 0; i < estados.length - 1; i++) {
+                if (estados[i].estado === "No operativo") {
+                    const inicio = new Date(estados[i].timestamp);
+                    const fin = new Date(estados[i + 1].timestamp);
+                    
+                    console.log(`Evaluando período no operativo:`, {
+                        inicio: inicio.toISOString(),
+                        fin: fin.toISOString(),
+                        dentroDeHorario: inicio >= inicioServicio && inicio <= finServicio
+                    });
+                    
+                    // Solo contar tiempo dentro del horario de servicio
+                    if (inicio >= inicioServicio && inicio <= finServicio) {
+                        const tiempoPeriodo = fin - inicio;
+                        tiempoNoOperativo += tiempoPeriodo;
+                        console.log(`Sumando tiempo no operativo: ${tiempoPeriodo/60000} minutos`);
+                    }
+                }
+            }
+
+            // Manejar el último estado si es no operativo
+            const ultimoEstado = estados[estados.length - 1];
+            if (ultimoEstado.estado === "No operativo") {
+                const inicio = new Date(ultimoEstado.timestamp);
+                const fin = new Date(); // momento actual
+                
+                console.log('Evaluando último estado:', {
+                    estado: ultimoEstado.estado,
+                    inicio: inicio.toISOString(),
+                    fin: fin.toISOString(),
+                    dentroDeHorario: inicio >= inicioServicio && inicio <= finServicio
+                });
+
+                if (inicio >= inicioServicio && inicio <= finServicio) {
+                    let tiempoAdicional;
+                    if (fin > finServicio) {
+                        tiempoAdicional = finServicio - inicio;
+                        console.log('Fin después de horario de servicio, usando fin de servicio');
+                    } else {
+                        tiempoAdicional = fin - inicio;
+                        console.log('Usando tiempo hasta momento actual');
+                    }
+                    tiempoNoOperativo += tiempoAdicional;
+                    console.log(`Sumando tiempo adicional: ${tiempoAdicional/60000} minutos`);
+                }
+            }
+
+            const tiempoFinal = Math.floor(tiempoNoOperativo / 60000);
+            console.log(`Tiempo no operativo total: ${tiempoFinal} minutos`);
+            return tiempoFinal;
+        }
+
+        // Función para calcular tiempo transcurrido desde inicio de servicio hasta ahora
+        function calcularTiempoTranscurrido(horaInicio) {
+            const ahora = new Date();
+            const [horaInicioH, horaInicioM] = horaInicio.split(':').map(Number);
+            
+            const inicioServicio = new Date(ahora);
+            inicioServicio.setHours(horaInicioH, horaInicioM, 0, 0);
+            
+            // Si la hora actual es menor que la hora de inicio, significa que aún no ha comenzado el servicio
+            if (ahora < inicioServicio) {
+                return 0;
+            }
+            
+            return Math.floor((ahora - inicioServicio) / 60000); // Convertir a minutos
+        }
+
+        // Función para calcular el tiempo de detención en minutos
+        function calcularTiempoDetencion(inicio, fin) {
+            return Math.round((fin - inicio) / (1000 * 60)); // Convertir a minutos
+        }
+
+        // Función para formatear minutos a formato legible
+        function formatearTiempo(minutos) {
+            if (minutos < 60) {
+                return `${minutos} min`;
+            }
+            const horas = Math.floor(minutos / 60);
+            const minutosRestantes = minutos % 60;
+            return `${horas}h ${minutosRestantes}min`;
+        }
+
         // Función para cargar y mostrar los datos
         async function cargarDatos() {
             try {
                 const fecha = document.getElementById('fechaFilter').value || obtenerFechaArgentina();
+                console.log("Cargando datos para fecha:", fecha);
                 
                 const snapshot = await db.collection("estadisticasDiarias")
                     .where('fecha', '==', fecha)
                     .get();
 
+                console.log("Datos obtenidos:", snapshot.size, "documentos");
+                
+                if (snapshot.empty) {
+                    console.log("No se encontraron datos para la fecha:", fecha);
+                    document.getElementById('error-msg').textContent = `No hay datos disponibles para la fecha ${fecha}`;
+                    document.getElementById('error-msg').style.display = 'block';
+                    return;
+                }
+
                 // Procesar los datos
                 currentData = snapshot.docs.map(doc => {
                     const data = doc.data();
-                    const estadoActual = data.estadisticas.estados[data.estadisticas.estados.length - 1];
+                    console.log('Procesando documento:', doc.id, data);
+                    
+                    const estadoActual = data.estadisticas?.estados?.[data.estadisticas.estados.length - 1];
+                    console.log('Estado actual:', estadoActual);
+                    
+                    // Calcular tiempo no operativo en tiempo real
+                    const tiempoNoOperativo = calcularTiempoNoOperativoReal(
+                        data.estadisticas?.estados || [],
+                        data.horaInicioServicio,
+                        data.horaFinServicio
+                    );
+
+                    // Calcular tiempo transcurrido desde inicio de servicio hasta ahora
+                    const tiempoTranscurrido = calcularTiempoTranscurrido(data.horaInicioServicio);
+                    console.log('Tiempo transcurrido desde inicio de servicio:', tiempoTranscurrido, 'minutos');
+
+                    // Calcular disponibilidad basada en el tiempo transcurrido
+                    const disponibilidad = tiempoTranscurrido > 0
+                        ? (((tiempoTranscurrido - tiempoNoOperativo) / tiempoTranscurrido) * 100).toFixed(1)
+                        : '0.0';
+
+                    console.log('Cálculos para', data.medioElevacion, {
+                        tiempoNoOperativo,
+                        tiempoTranscurrido,
+                        disponibilidad
+                    });
+
                     return {
                         id: doc.id,
                         linea: data.linea,
                         estacion: data.estacion,
                         medioElevacion: data.medioElevacion,
-                        cantidadFallas: data.estadisticas.cantidadFallas,
-                        tiempoDetenido: data.estadisticas.tiempoNoOperativo || 0,
-                        tiempoTotalServicio: data.estadisticas.tiempoTotalServicio || 0,
-                        disponibilidad: data.estadisticas.tiempoTotalServicio > 0 
-                            ? (((data.estadisticas.tiempoTotalServicio - data.estadisticas.tiempoNoOperativo) / data.estadisticas.tiempoTotalServicio) * 100).toFixed(1)
-                            : '0.0',
+                        cantidadFallas: data.estadisticas?.cantidadFallas || 0,
+                        tiempoDetenido: tiempoNoOperativo,
+                        tiempoTranscurrido: tiempoTranscurrido,
+                        disponibilidad: disponibilidad,
                         estado: estadoActual ? estadoActual.estado : 'Sin datos'
                     };
                 });
 
+                console.log("Datos procesados:", currentData);
+                
+                if (currentData.length === 0) {
+                    console.log("No hay datos para mostrar después del procesamiento");
+                    document.getElementById('error-msg').textContent = "No hay datos para mostrar";
+                    document.getElementById('error-msg').style.display = 'block';
+                    return;
+                }
+
                 aplicarFiltros();
+                actualizarGrafico(currentData);
             } catch (error) {
                 console.error("Error al cargar los datos:", error);
+                document.getElementById('error-msg').textContent = `Error al cargar datos: ${error.message}`;
+                document.getElementById('error-msg').style.display = 'block';
             }
         }
 
         // Función para aplicar filtros
         function aplicarFiltros() {
+            console.log("Aplicando filtros...");
             const lineaFilter = document.getElementById('lineaFilter').value;
             const estadoFilter = document.getElementById('estadoFilter').value;
+
+            console.log('Filtros actuales:', { lineaFilter, estadoFilter });
 
             let datosFiltrados = [...currentData];
 
             if (lineaFilter) {
+                console.log('Filtrando por línea:', lineaFilter);
                 datosFiltrados = datosFiltrados.filter(item => item.linea === lineaFilter);
             }
 
             if (estadoFilter) {
+                console.log('Filtrando por estado:', estadoFilter);
                 datosFiltrados = datosFiltrados.filter(item => item.estado === estadoFilter);
             }
+
+            console.log('Datos después de filtrar:', datosFiltrados);
 
             // Actualizar estadísticas
             document.getElementById('totalRegistros').textContent = datosFiltrados.length;
             
-            const tiempoTotalDetenido = datosFiltrados.reduce((acc, item) => acc + (item.tiempoDetenido || 0), 0);
-            document.getElementById('mediosNoOperativos').textContent = formatearTiempoDetenido(tiempoTotalDetenido);
+            // Contar medios que fallaron (tuvieron al menos un período no operativo)
+            const mediosFallados = datosFiltrados.filter(item => item.tiempoDetenido > 0).length;
+            document.getElementById('mediosNoOperativos').textContent = mediosFallados;
             
-            const tiempoTotalServicio = datosFiltrados.reduce((acc, item) => acc + item.tiempoTotalServicio, 0);
-            const disponibilidadPromedio = tiempoTotalServicio > 0 
-                ? (((tiempoTotalServicio - tiempoTotalDetenido) / tiempoTotalServicio) * 100).toFixed(1) + '%'
+            // Calcular el promedio de los porcentajes de disponibilidad
+            const disponibilidadPromedio = datosFiltrados.length > 0
+                ? (datosFiltrados.reduce((acc, item) => acc + parseFloat(item.disponibilidad), 0) / datosFiltrados.length).toFixed(1) + '%'
                 : '0%';
+            console.log('Disponibilidad promedio (nuevo cálculo):', disponibilidadPromedio);
             document.getElementById('disponibilidadPromedio').textContent = disponibilidadPromedio;
 
             // Actualizar tabla
-            const tbody = document.getElementById('statsTableBody');
+            const tbody = document.querySelector('table tbody');
             tbody.innerHTML = '';
-
+            
             datosFiltrados.forEach(item => {
-                const row = tbody.insertRow();
-                const estadoClass = item.estado === 'Operativo' ? 'status-operativo' : 'status-no-operativo';
-                row.innerHTML = `
+                const tr = document.createElement('tr');
+                const estadoClass = item.estado === 'Operativo' ? 'estado-operativo' : 'estado-no-operativo';
+                
+                tr.innerHTML = `
                     <td>${item.linea}</td>
                     <td>${item.estacion}</td>
                     <td>${item.medioElevacion}</td>
@@ -372,6 +584,7 @@
                     <td>${item.disponibilidad}%</td>
                     <td class="${estadoClass}">${item.estado}</td>
                 `;
+                tbody.appendChild(tr);
             });
 
             actualizarGrafico(datosFiltrados);
@@ -450,39 +663,84 @@
         // Función para actualizar el gráfico
         function actualizarGrafico(datos) {
             const ctx = document.getElementById('statsChart').getContext('2d');
+            console.log("Actualizando gráfico con datos:", datos);
             
-            // Destruir gráfico anterior si existe
+            // Definir colores para cada línea
+            const coloresLineas = {
+                'Línea A': '#08b3dc',  // Celeste
+                'Línea B': '#ed4137',  // Rojo
+                'Línea C': '#0f70b4',  // Azul
+                'Línea D': '#008669',  // Verde
+                'Línea E': '#7f2d8c',  // Morado
+                'Línea H': '#fdd201'   // Amarillo
+            };
+            
+            // Agrupar datos por línea y calcular disponibilidad promedio
+            const disponibilidadPorLinea = {};
+            datos.forEach(item => {
+                if (!disponibilidadPorLinea[item.linea]) {
+                    disponibilidadPorLinea[item.linea] = {
+                        total: 0,
+                        count: 0
+                    };
+                }
+                disponibilidadPorLinea[item.linea].total += parseFloat(item.disponibilidad);
+                disponibilidadPorLinea[item.linea].count++;
+            });
+
+            const lineas = Object.keys(disponibilidadPorLinea).sort();
+            const promedios = lineas.map(linea => 
+                disponibilidadPorLinea[linea].total / disponibilidadPorLinea[linea].count
+            );
+
+            // Obtener los colores correspondientes a cada línea
+            const colores = lineas.map(linea => coloresLineas[linea] || '#999999'); // Color gris por defecto
+
             if (chart) {
                 chart.destroy();
             }
 
-            // Preparar datos para el gráfico
-            const lineas = [...new Set(datos.map(item => item.linea))];
-            const disponibilidadPorLinea = lineas.map(linea => {
-                const mediosDeLinea = datos.filter(item => item.linea === linea);
-                if (mediosDeLinea.length === 0) return 0;
-                return (mediosDeLinea.reduce((acc, item) => acc + parseFloat(item.disponibilidad), 0) / mediosDeLinea.length).toFixed(1);
-            });
-
-            // Crear nuevo gráfico
             chart = new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: lineas,
                     datasets: [{
                         label: 'Disponibilidad por Línea (%)',
-                        data: disponibilidadPorLinea,
-                        backgroundColor: 'rgba(0, 123, 255, 0.5)',
-                        borderColor: 'rgba(0, 123, 255, 1)',
+                        data: promedios,
+                        backgroundColor: colores,
+                        borderColor: colores.map(color => color),
                         borderWidth: 1
                     }]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
                     scales: {
                         y: {
                             beginAtZero: true,
-                            max: 100
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Disponibilidad (%)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Línea'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Disponibilidad por Línea',
+                            font: {
+                                size: 16
+                            }
+                        },
+                        legend: {
+                            display: false  // Ocultar leyenda ya que cada barra tiene su propio color
                         }
                     }
                 }
@@ -501,6 +759,53 @@
             
             // Cargar datos iniciales
             cargarDatos();
+        });
+
+        // Animación mejorada del botón con scroll
+        let lastScrollTop = 0;
+        let scrolling = false;
+        const button = document.querySelector('.fixed-button');
+        const SCROLL_THRESHOLD = 50; // Ajusta este valor para cambiar la sensibilidad
+        let scrollDelta = 0;
+        let animationFrame;
+
+        window.addEventListener('scroll', function() {
+            if (!scrolling) {
+                scrolling = true;
+                animate();
+            }
+
+            const st = window.pageYOffset || document.documentElement.scrollTop;
+            scrollDelta = st - lastScrollTop;
+            lastScrollTop = st;
+        }, { passive: true });
+
+        function animate() {
+            // Calcular el desplazamiento del botón basado en la velocidad del scroll
+            const displacement = Math.min(Math.max(-10, scrollDelta * 0.2), 10); // Limitar el desplazamiento entre -10 y 10 pixels
+            const scale = Math.max(0.9, 1 - Math.abs(scrollDelta) * 0.001); // Escala entre 0.9 y 1
+
+            // Aplicar la transformación
+            button.style.transform = `translateY(${displacement}px) scale(${scale})`;
+
+            // Reducir gradualmente el efecto
+            scrollDelta *= 0.85;
+
+            if (Math.abs(scrollDelta) > 0.1) {
+                animationFrame = requestAnimationFrame(animate);
+            } else {
+                // Restaurar el botón a su posición original
+                button.style.transform = '';
+                scrolling = false;
+                cancelAnimationFrame(animationFrame);
+            }
+        }
+
+        // Limpiar el frame de animación cuando se desmonte
+        window.addEventListener('unload', () => {
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+            }
         });
     </script>
 </body>
