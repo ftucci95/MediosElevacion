@@ -262,20 +262,43 @@
             if (!timestamp) return "-";
             
             try {
+                let date;
+                
                 // Si es un timestamp numérico
                 if (typeof timestamp === 'number') {
-                    return new Date(timestamp).toLocaleString('es-AR');
+                    date = new Date(timestamp);
                 }
                 // Si el timestamp es un objeto Firestore
-                if (timestamp && timestamp.seconds) {
-                    return new Date(timestamp.seconds * 1000).toLocaleString('es-AR');
+                else if (timestamp && timestamp.seconds) {
+                    date = new Date(timestamp.seconds * 1000);
                 }
-                // Si es una fecha o string
-                const date = new Date(timestamp);
-                if (isNaN(date.getTime())) return "-";
-                return date.toLocaleString('es-AR');
+                // Si es un string ISO (como '2025-01-20T22:55:37-03:00')
+                else if (typeof timestamp === 'string' && timestamp.includes('T')) {
+                    date = new Date(timestamp);
+                }
+                // Cualquier otro formato de fecha
+                else {
+                    date = new Date(timestamp);
+                }
+
+                // Verificar si la fecha es válida
+                if (isNaN(date.getTime())) {
+                    console.error("Fecha inválida:", timestamp);
+                    return "-";
+                }
+
+                // Formatear la fecha en español Argentina
+                return date.toLocaleString('es-AR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
             } catch (error) {
-                console.error("Error al formatear fecha:", error);
+                console.error("Error al formatear fecha:", error, "Timestamp:", timestamp);
                 return "-";
             }
         }
