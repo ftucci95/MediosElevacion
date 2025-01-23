@@ -142,12 +142,15 @@
       color: red;
     }
     .button-container {
-      margin-top: 20px;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
       display: flex;
+      flex-direction: column;
       gap: 10px;
     }
 
-    button {
+    .nav-button {
       padding: 10px 20px;
       font-size: 14px;
       border: none;
@@ -156,9 +159,10 @@
       background-color: #007bff;
       color: white;
       transition: background-color 0.3s;
+      width: 200px;
     }
 
-    button:hover {
+    .nav-button:hover {
       background-color: #0056b3;
     }
   </style>
@@ -187,7 +191,8 @@
   <div id="global-tooltip"></div>
 
   <div class="button-container">
-    <button id="btn-historial" onclick="window.location.href='historial.html'">Ver historial de cambios</button>
+    <button onclick="window.location.href='historial.html'" class="nav-button">Ver Historial de Cambios</button>
+    <button onclick="window.location.href='estadisticas.html'" class="nav-button">Ver Estadísticas</button>
   </div>
 
   <script>
