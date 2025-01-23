@@ -470,47 +470,50 @@
     }
 
     /**
-     * Toma la cadena estilo "/Date(1737051155790-0300)/"
-     * y devuelve algo como "hace 10 min."
+     * Toma una fecha en formato ISO y devuelve algo como "hace 10 min."
      */
     function calcularTiempoTranscurrido(dateStr) {
-        // 1) Extraemos el timestamp con una expresión regular
-        //    dateStr típicamente es "/Date(1737051155790-0300)/"
-        const match = dateStr.match(/\/Date\((\d+)([-+]\d+)\)\//);
-        if (!match) return ""; // Por si falla
+        if (!dateStr) return "";
         
-        // match[1] = "1737051155790" (el tiempo en ms)
-        // match[2] = "-0300" (la zona horaria)
-        const timestamp = parseInt(match[1], 10);
-        
-        // 2) Convertimos a Date de JavaScript
-        const fecha = new Date(timestamp);
-        
-        // 3) Calculamos diferencia en milisegundos respecto a "ahora"
-        const ahora = Date.now();
-        const diffMs = ahora - fecha.getTime();
-        
-        // Si diffMs es negativo, la fecha es "futura" → ajusta si lo deseas
-        if (diffMs < 0) return "recién actualizado";
+        try {
+            // Convertimos el string ISO directamente a Date
+            const fecha = new Date(dateStr);
+            
+            // Verificamos que la fecha sea válida
+            if (isNaN(fecha.getTime())) {
+                console.error("Fecha inválida:", dateStr);
+                return "";
+            }
+            
+            // Calculamos diferencia en milisegundos respecto a "ahora"
+            const ahora = Date.now();
+            const diffMs = ahora - fecha.getTime();
+            
+            // Si diffMs es negativo, la fecha es "futura"
+            if (diffMs < 0) return "recién actualizado";
 
-        // 4) Convertimos a minutos
-        const diffMin = Math.floor(diffMs / 1000 / 60);
-        if (diffMin < 1) {
-            return "hace menos de 1 min.";
+            // Convertimos a minutos
+            const diffMin = Math.floor(diffMs / 1000 / 60);
+            if (diffMin < 1) {
+                return "hace menos de 1 min.";
+            }
+            if (diffMin < 60) {
+                return `hace ${diffMin} min.`;
+            }
+            
+            // Más de 60 minutos → calculamos horas
+            const diffH = Math.floor(diffMin / 60);
+            if (diffH < 24) {
+                return `hace ${diffH} h.`;
+            }
+            
+            // Más de 24 horas → calculamos días
+            const diffD = Math.floor(diffH / 24);
+            return `hace ${diffD} d.`;
+        } catch (error) {
+            console.error("Error calculando tiempo transcurrido:", error);
+            return "";
         }
-        if (diffMin < 60) {
-            return `hace ${diffMin} min.`;
-        }
-        
-        // Más de 60 minutos → calculamos horas
-        const diffH = Math.floor(diffMin / 60);
-        if (diffH < 24) {
-            return `hace ${diffH} h.`;
-        }
-        
-        // Más de 24 horas → calculamos días
-        const diffD = Math.floor(diffH / 24);
-        return `hace ${diffD} d.`;
     }
 
     /**
