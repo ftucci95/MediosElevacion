@@ -501,8 +501,22 @@
         if (!dateStr) return "";
         
         try {
-            // Convertimos el string ISO directamente a Date
-            const fecha = new Date(dateStr);
+            let fecha;
+            
+            // Detectar formato Microsoft JSON Date
+            if (typeof dateStr === 'string' && dateStr.startsWith('/Date(')) {
+                const matches = dateStr.match(/\/Date\((-?\d+)([+-]\d{4})\)\//);
+                if (matches) {
+                    const milliseconds = parseInt(matches[1]);
+                    fecha = new Date(milliseconds);
+                } else {
+                    console.error("Formato de fecha Microsoft inválido:", dateStr);
+                    return "";
+                }
+            } else {
+                // Formato ISO
+                fecha = new Date(dateStr);
+            }
             
             // Verificamos que la fecha sea válida
             if (isNaN(fecha.getTime())) {
@@ -510,29 +524,18 @@
                 return "";
             }
             
-            // Calculamos diferencia en milisegundos respecto a "ahora"
             const ahora = Date.now();
             const diffMs = ahora - fecha.getTime();
             
-            // Si diffMs es negativo, la fecha es "futura"
             if (diffMs < 0) return "recién actualizado";
 
-            // Convertimos a minutos
             const diffMin = Math.floor(diffMs / 1000 / 60);
-            if (diffMin < 1) {
-                return "hace menos de 1 min.";
-            }
-            if (diffMin < 60) {
-                return `hace ${diffMin} min.`;
-            }
+            if (diffMin < 1) return "hace menos de 1 min.";
+            if (diffMin < 60) return `hace ${diffMin} min.`;
             
-            // Más de 60 minutos → calculamos horas
             const diffH = Math.floor(diffMin / 60);
-            if (diffH < 24) {
-                return `hace ${diffH} h.`;
-            }
+            if (diffH < 24) return `hace ${diffH} h.`;
             
-            // Más de 24 horas → calculamos días
             const diffD = Math.floor(diffH / 24);
             return `hace ${diffD} d.`;
         } catch (error) {

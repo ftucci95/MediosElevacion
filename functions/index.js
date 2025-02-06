@@ -69,32 +69,62 @@ async function writeToLog(message) {
 async function compararEstados(estadoAnterior, estadoNuevo, db) {
   const cambios = [];
   
-  if (!Array.isArray(estadoNuevo)) {
-    return cambios;
+  // Función helper para normalizar timestamp al momento de comparar
+  function normalizarParaComparacion(timestamp) {
+    if (!timestamp) return null;
+    
+    try {
+      // Si es formato Microsoft JSON Date
+      if (typeof timestamp === 'string' && timestamp.startsWith('/Date(')) {
+        const matches = timestamp.match(/\/Date\((-?\d+)([+-]\d{4})\)\//);
+        if (matches) {
+          const milliseconds = parseInt(matches[1]);
+          return new Date(milliseconds).getTime();
+        }
+      }
+      
+      // Si es formato ISO o timestamp válido
+      return new Date(timestamp).getTime();
+    } catch (error) {
+      console.error('Error normalizando timestamp para comparación:', error);
+      return null;
+    }
   }
 
-  // Crear un mapa del estado anterior para búsquedas O(1)
+  // Crear mapa del estado anterior
   const accesoMap = new Map();
   if (Array.isArray(estadoAnterior)) {
     estadoAnterior.forEach(linea => {
-      (linea.estaciones || []).forEach(estacion => {
-        (estacion.accesos || []).forEach(acceso => {
+      linea.estaciones.forEach(estacion => {
+        estacion.accesos.forEach(acceso => {
           const key = `${linea.nombre}|${estacion.nombre}|${acceso.descripcion}`;
-          accesoMap.set(key, acceso);
+          // Normalizar el timestamp del estado anterior
+          const fechaActualizacionNormalizada = normalizarParaComparacion(acceso.fechaActualizacion);
+          accesoMap.set(key, {
+            ...acceso,
+            fechaActualizacionNormalizada
+          });
         });
       });
     });
   }
 
-  // Iterar sobre el estado nuevo y comparar con el mapa
+  // Comparar con estado nuevo
   for (const linea of estadoNuevo) {
     for (const estacion of linea.estaciones || []) {
       for (const acceso of estacion.accesos || []) {
         const key = `${linea.nombre}|${estacion.nombre}|${acceso.descripcion}`;
         const accesoAnterior = accesoMap.get(key);
+        
+        // Normalizar timestamp del estado nuevo para comparación
+        const fechaNuevaNormalizada = normalizarParaComparacion(acceso.fechaActualizacion);
 
-        // Solo logueamos si hay un cambio de estado
-        if (!accesoAnterior || accesoAnterior.funcionando !== acceso.funcionando) {
+        // Detectar cambio de estado o timestamp
+        const cambioEstado = !accesoAnterior || accesoAnterior.funcionando !== acceso.funcionando;
+        const cambioTimestamp = accesoAnterior && 
+                              fechaNuevaNormalizada !== accesoAnterior.fechaActualizacionNormalizada;
+
+        if (cambioEstado || cambioTimestamp) {
           const timestamp = new Date().toISOString();
           const mensaje = `${linea.nombre} - ${estacion.nombre} - ${acceso.descripcion}: ${
             accesoAnterior?.funcionando ? 'Operativo' : 'No existe/No operativo'
