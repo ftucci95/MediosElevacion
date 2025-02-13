@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Buscar Medio</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.2.0/dist/chartjs-adapter-luxon.min.js"></script>
+    <style>
+        /* Estilos idénticos a estadisticas.html */
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: white; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background-color: #ffd700; padding: 20px; text-align: center; margin-bottom: 20px; }
+        .search-box { background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        
+        /* Estilos para el autocompletado */
+        .autocomplete-container {
+            position: relative;
+            width: 100%;
+        }
+        
+        .autocomplete-input {
+            width: 100%;
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .autocomplete-list {
+            position: absolute;
+            width: 100%;
+            max-height: 300px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: none;
+        }
+        
+        .autocomplete-item {
+            padding: 8px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .autocomplete-item:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .autocomplete-item .medio-nombre {
+            font-weight: normal;
+        }
+        
+        .autocomplete-item .medio-info {
+            color: #666;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+
+        /* Estilos para el contenedor del gráfico */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Buscador de Medios</h1>
+        </div>
+
+        <div class="search-box">
+            <div class="autocomplete-container">
+                <input type="text" 
+                       id="nombreMedio" 
+                       class="autocomplete-input"
+                       placeholder="Ej: Ascensor 2 de Catalinas"
+                       autocomplete="off">
+                <div id="autocompleteList" class="autocomplete-list"></div>
+            </div>
+            <input type="date" id="fechaInicio">
+            <input type="date" id="fechaFin">
+        </div>
+
+        <div class="chart-container">
+            <canvas id="graficoEstado"></canvas>
+        </div>
+
+        <button onclick="window.location.href='index.html'" class="fixed-button">Volver al Inicio</button>
+    </div>
+
+    <script>
+        // Configuración Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDvXfQcRKFwc9XFVwVKSnCjl9im3zU2fvY",
+            authDomain: "medioselevacion-sbase.firebaseapp.com",
+            projectId: "medioselevacion-sbase",
+            storageBucket: "medioselevacion-sbase.firebasestorage.app",
+            messagingSenderId: "1082577847683",
+            appId: "1:1082577847683:web:d15b05a15983d674d962b6",
+            measurementId: "G-4XK7D02G0Y"
+        };
+
+        let app;
+        let db;
+        let chart = null; // Variable global para el gráfico
+        let renderQueue = Promise.resolve(); // Cola de renderizado
+        let mediosUnicos = new Map(); // Mover mediosUnicos al scope global
+
+        // Inicialización de Firebase con verificación
+        try {
+            app = firebase.initializeApp(firebaseConfig);
+            console.log('✅ Firebase inicializado correctamente');
+            
+            db = firebase.firestore();
+            console.log('✅ Conexión a Firestore establecida');
+        } catch (error) {
+            console.error('❌ Error al inicializar Firebase:', error);
+        }
+
+        // Configurar listeners para campos de búsqueda
+        document.addEventListener('DOMContentLoaded', () => {
+            const nombreMedio = document.getElementById('nombreMedio');
+            const fechaInicio = document.getElementById('fechaInicio');
+            const fechaFin = document.getElementById('fechaFin');
+            const autocompleteList = document.getElementById('autocompleteList');
+
+            // Cargar medios únicos al inicio
+            cargarMediosUnicos();
+
+            // Función para obtener fecha de inicio (00:00:00)
+            function getFechaInicio(fecha) {
+                const fechaInicio = new Date(fecha);
+                fechaInicio.setHours(0, 0, 0, 0);
+                return fechaInicio;
+            }
+
+            // Función para obtener fecha de fin (23:59:59)
+            function getFechaFin(fecha) {
+                const fechaFin = new Date(fecha);
+                fechaFin.setHours(23, 59, 59, 999);
+                return fechaFin;
+            }
+
+            // Configurar fecha por defecto (hoy)
+            const hoy = new Date();
+            fechaInicio.value = hoy.toISOString().split('T')[0];
+            fechaFin.value = hoy.toISOString().split('T')[0];
+
+            // Función para cargar medios únicos
+            async function cargarMediosUnicos() {
+                try {
+                    if (mediosUnicos.size === 0) {
+                        const snapshot = await db.collection("historialCambios")
+                            .orderBy("medioElevacion")
+                            .get();
+                        
+                        snapshot.docs.forEach(doc => {
+                            const data = doc.data();
+                            if (data.medioElevacion) {
+                                const key = data.medioElevacion;
+                                if (!mediosUnicos.has(key)) {
+                                    mediosUnicos.set(key, {
+                                        linea: data.linea,
+                                        estacion: data.estacion
+                                    });
+                                }
+                            }
+                        });
+                        console.log('🔄 Medios únicos cargados:', mediosUnicos.size);
+                    }
+                } catch (error) {
+                    console.error('❌ Error al cargar medios únicos:', error);
+                }
+            }
+
+            // Función para actualizar sugerencias
+            async function actualizarSugerencias(searchText) {
+                try {
+                    // Si no hay texto de búsqueda, ocultar sugerencias
+                    if (!searchText.trim()) {
+                        autocompleteList.style.display = 'none';
+                        return;
+                    }
+
+                    // Asegurarse de que los medios únicos estén cargados
+                    await cargarMediosUnicos();
+
+                    // Filtrar sugerencias basadas en el texto de búsqueda
+                    const searchLower = searchText.toLowerCase();
+                    const sugerencias = Array.from(mediosUnicos.entries())
+                        .filter(([medio]) => medio.toLowerCase().includes(searchLower))
+                        .sort((a, b) => a[0].localeCompare(b[0]));
+
+                    // Actualizar lista de sugerencias
+                    if (sugerencias.length > 0) {
+                        autocompleteList.innerHTML = sugerencias
+                            .map(([medio, info]) => `
+                                <div class="autocomplete-item" data-value="${medio}">
+                                    <span class="medio-nombre">${medio}</span>
+                                    <span class="medio-info">- ${info.linea} - ${info.estacion}</span>
+                                </div>
+                            `)
+                            .join('');
+                        autocompleteList.style.display = 'block';
+                    } else {
+                        autocompleteList.style.display = 'none';
+                    }
+
+                    console.log('📝 Sugerencias actualizadas:', sugerencias.length);
+                } catch (error) {
+                    console.error('❌ Error al actualizar sugerencias:', error);
+                }
+            }
+
+            // Manejar clics en las sugerencias
+            autocompleteList.addEventListener('click', (e) => {
+                const item = e.target.closest('.autocomplete-item');
+                if (item) {
+                    nombreMedio.value = item.dataset.value;
+                    autocompleteList.style.display = 'none';
+                    buscarMedio();
+                }
+            });
+
+            // Cerrar sugerencias al hacer clic fuera
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.autocomplete-container')) {
+                    autocompleteList.style.display = 'none';
+                }
+            });
+
+            // Añadir listeners
+            nombreMedio.addEventListener('input', debounce(() => {
+                const valor = nombreMedio.value;
+                console.log('🔍 Búsqueda por nombre:', valor);
+                actualizarSugerencias(valor);
+                buscarMedio();
+            }, 300));
+
+            // Listener para cuando se selecciona una sugerencia
+            nombreMedio.addEventListener('change', () => {
+                console.log('✅ Medio seleccionado:', nombreMedio.value);
+                buscarMedio();
+            });
+
+            // Modificar los event listeners de fechas
+            fechaInicio.addEventListener('change', () => {
+                console.log('📅 Fecha inicio cambiada:', fechaInicio.value);
+                buscarMedio();
+            });
+
+            fechaFin.addEventListener('change', () => {
+                console.log('📅 Fecha fin cambiada:', fechaFin.value);
+                buscarMedio();
+            });
+
+            // Búsqueda inicial
+            buscarMedio();
+        });
+
+        // Función debounce para evitar múltiples llamadas
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Función para encolar renderizado
+        function enqueueRender(renderFunction) {
+            renderQueue = renderQueue.then(() => {
+                return new Promise(resolve => {
+                    requestAnimationFrame(() => {
+                        renderFunction();
+                        resolve();
+                    });
+                });
+            }).catch(error => {
+                console.error('❌ Error en cola de renderizado:', error);
+            });
+        }
+
+        // Función para limpiar el gráfico
+        function limpiarGrafico() {
+            if (chart) {
+                chart.destroy();
+                chart = null;
+            }
+        }
+
+        async function buscarMedio() {
+            const nombreMedio = document.getElementById('nombreMedio').value;
+            const fechaInicio = document.getElementById('fechaInicio').value;
+            const fechaFin = document.getElementById('fechaFin').value;
+
+            console.log('🔍 Iniciando búsqueda:', {
+                nombreMedio,
+                fechaInicio,
+                fechaFin
+            });
+
+            try {
+                // Si no hay texto de búsqueda, limpiar gráfico
+                if (!nombreMedio.trim()) {
+                    enqueueRender(() => limpiarGrafico());
+                    return;
+                }
+
+                // Verificar si el medio existe exactamente como está escrito
+                const medioExacto = Array.from(mediosUnicos.keys())
+                    .find(medio => medio === nombreMedio.trim());
+
+                if (!medioExacto) {
+                    console.log('ℹ️ No hay match exacto para el medio:', nombreMedio);
+                    enqueueRender(() => limpiarGrafico());
+                    return;
+                }
+
+                // Crear fechas con horas específicas
+                const fechaInicioCompleta = getFechaInicio(fechaInicio);
+                const fechaFinCompleta = getFechaFin(fechaFin);
+
+                console.log('🕒 Rango de búsqueda:', {
+                    desde: fechaInicioCompleta.toLocaleString(),
+                    hasta: fechaFinCompleta.toLocaleString()
+                });
+
+                // Buscar registros para el medio exacto
+                const todosLosRegistros = await db.collection("historialCambios")
+                    .orderBy("timestamp", "desc")
+                    .get();
+                
+                const registrosPorMedio = todosLosRegistros.docs.filter(doc => {
+                    const data = doc.data();
+                    return data.medioElevacion === medioExacto;
+                });
+
+                console.log(`📊 Total de registros históricos encontrados para el medio "${medioExacto}":`, registrosPorMedio.length);
+
+                // Filtrar por período
+                const resultados = registrosPorMedio.filter(doc => {
+                    const data = doc.data();
+                    try {
+                        const timestamp = new Date(data.timestamp);
+                        if (isNaN(timestamp.getTime())) {
+                            console.warn('⚠️ Timestamp inválido encontrado:', data.timestamp);
+                            return false;
+                        }
+                        return timestamp >= fechaInicioCompleta && timestamp <= fechaFinCompleta;
+                    } catch (error) {
+                        console.warn('⚠️ Error al procesar timestamp:', error);
+                        return false;
+                    }
+                });
+
+                console.log(`📅 Registros dentro del período seleccionado (${fechaInicioCompleta.toLocaleString()} - ${fechaFinCompleta.toLocaleString()}):`, resultados.length);
+                
+                if (registrosPorMedio.length > 0 && resultados.length === 0) {
+                    console.log('⚠️ Hay registros para este medio pero ninguno en el período seleccionado');
+                    enqueueRender(() => limpiarGrafico());
+                    return;
+                }
+
+                // Encolar el renderizado del gráfico
+                enqueueRender(() => procesarDatosGrafico(resultados));
+
+            } catch (error) {
+                console.error('❌ Error en la búsqueda:', error);
+                enqueueRender(() => limpiarGrafico());
+            }
+        }
+
+        function procesarDatosGrafico(docs) {
+            console.log('🔄 Procesando datos para el gráfico');
+            try {
+                // Limpiar gráfico anterior
+                limpiarGrafico();
+
+                // Si no hay datos, no crear nuevo gráfico
+                if (!docs || docs.length === 0) {
+                    console.log('ℹ️ No hay datos para mostrar');
+                    return;
+                }
+
+                // Destruir gráfico anterior si existe
+                if (chart) {
+                    chart.destroy();
+                }
+
+                // Agrupar datos por timestamp
+                const datosOrdenados = docs.map(doc => {
+                    const data = doc.data();
+                    try {
+                        // Convertir el timestamp ISO string a Date
+                        const timestamp = new Date(data.timestamp);
+                        
+                        // Verificar si la fecha es válida
+                        if (isNaN(timestamp.getTime())) {
+                            console.warn('⚠️ Timestamp inválido encontrado:', data.timestamp);
+                            return null;
+                        }
+
+                        return {
+                            timestamp: timestamp,
+                            estado: data.estado === "Operativo" ? 1 : 0,
+                            fechaHora: timestamp.toLocaleString()
+                        };
+                    } catch (error) {
+                        console.warn('⚠️ Error al procesar timestamp en gráfico:', error);
+                        return null;
+                    }
+                })
+                .filter(item => item !== null) // Eliminar entradas inválidas
+                .sort((a, b) => a.timestamp - b.timestamp); // Ordenar cronológicamente
+
+                console.log('📊 Datos procesados:', {
+                    totalPuntos: datosOrdenados.length,
+                    datos: datosOrdenados
+                });
+                
+                const ctx = document.getElementById('graficoEstado').getContext('2d');
+
+                // Crear gráfico de líneas
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            {
+                                label: 'Estado',
+                                data: datosOrdenados.map(d => ({
+                                    x: d.timestamp,
+                                    y: d.estado
+                                })),
+                                borderColor: 'rgb(75, 192, 192)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                                tension: 0,
+                                pointRadius: 5,
+                                pointHoverRadius: 8,
+                                stepped: true,
+                                hitRadius: 10
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Estado del Medio'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `Estado: ${context.raw.y === 1 ? 'Operativo' : 'No Operativo'}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'hour',
+                                    displayFormats: {
+                                        hour: 'dd/MM HH:mm'
+                                    },
+                                    tooltipFormat: 'dd/MM/yyyy HH:mm'
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Fecha y Hora'
+                                }
+                            },
+                            y: {
+                                min: -0.1,
+                                max: 1.1,
+                                ticks: {
+                                    stepSize: 1,
+                                    callback: function(value) {
+                                        if (value === 1) return 'Operativo';
+                                        if (value === 0) return 'No Operativo';
+                                        return '';
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Estado'
+                                }
+                            }
+                        },
+                        interaction: {
+                            intersect: false,
+                            mode: 'nearest',
+                            axis: 'x'
+                        },
+                        elements: {
+                            point: {
+                                hitRadius: 10
+                            }
+                        }
+                    }
+                });
+                
+                console.log('✅ Gráfico renderizado correctamente con', datosOrdenados.length, 'puntos de datos');
+            } catch (error) {
+                console.error('❌ Error al procesar datos:', error);
+            }
+        }
+
+        // Función para obtener fecha de inicio (00:00:00)
+        function getFechaInicio(fecha) {
+            const fechaInicio = new Date(fecha);
+            fechaInicio.setHours(0, 0, 0, 0);
+            return fechaInicio;
+        }
+
+        // Función para obtener fecha de fin (23:59:59)
+        function getFechaFin(fecha) {
+            const fechaFin = new Date(fecha);
+            fechaFin.setHours(23, 59, 59, 999);
+            return fechaFin;
+        }
+    </script>
+</body>
+</html> 

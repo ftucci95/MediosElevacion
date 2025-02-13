@@ -441,6 +441,17 @@
                 mediosMap = new Map();
                 currentData.historial.forEach(cambio => {
                     const key = `${cambio.linea}-${cambio.estacion}-${cambio.medioElevacion}`;
+                    
+                    // Logging para asc2 de catalinas
+                    if (cambio.medioElevacion === 'Ascensor 2' && cambio.estacion === 'Catalinas') {
+                        console.log('[DEBUG] Registro histórico encontrado:', {
+                            medio: cambio.medioElevacion,
+                            estado: cambio.estado,
+                            timestamp: cambio.timestamp,
+                            linea: cambio.linea
+                        });
+                    }
+
                     if (!mediosMap.has(key)) {
                         mediosMap.set(key, {
                             linea: cambio.linea,
@@ -451,6 +462,7 @@
                             ultimaActualizacion: null
                         });
                     }
+                    
                     const medio = mediosMap.get(key);
                     if (cambio.estado === "No operativo") {
                         medio.fallas.push(cambio);
@@ -508,77 +520,186 @@
 
         // Función para aplicar filtros
         function aplicarFiltros() {
-            const linea = document.getElementById('lineaFilter').value;
-            const periodo = parseInt(document.getElementById('periodoFilter').value);
-            const estado = document.getElementById('estadoFilter').value;
+            try {
+                const linea = document.getElementById('lineaFilter').value;
+                const periodo = parseInt(document.getElementById('periodoFilter').value);
+                const estado = document.getElementById('estadoFilter').value;
 
-            const fechaLimite = new Date();
-            fechaLimite.setDate(fechaLimite.getDate() - periodo);
-
-            // Filtrar medios según los criterios
-            const tbody = document.getElementById('mediosTableBody');
-            tbody.innerHTML = '';
-
-            Array.from(mediosMap.values()).forEach(medio => {
-                // Filtrar por línea si hay una seleccionada
-                if (linea && medio.linea !== linea) return;
-
-                // Filtrar fallas por período
-                const fallasPeriodo = medio.fallas.filter(falla => {
-                    const fechaFalla = falla.timestamp && falla.timestamp.seconds ? 
-                        new Date(falla.timestamp.seconds * 1000) : 
-                        new Date(falla.timestamp);
-                    return fechaFalla >= fechaLimite;
+                const fechaLimite = new Date();
+                fechaLimite.setDate(fechaLimite.getDate() - periodo);
+                fechaLimite.setHours(0, 0, 0, 0); // Inicio del día hace <período> días
+                // Logging de parámetros de filtrado
+                console.log('[DEBUG] Parámetros de filtrado:', {
+                    linea, 
+                    periodo,
+                    estado,
+                    fechaLimite: fechaLimite.toISOString()
                 });
 
-                // Determinar si el medio debe mostrarse basado en:
-                // 1. Si está actualmente no operativo
-                // 2. Si tiene fallas en el período seleccionado
-                // 3. Si hay un filtro de estado específico
-                const mostrarPorEstado = !estado || medio.estadoActual.toLowerCase() === estado.toLowerCase();
-                const mostrarPorFallas = fallasPeriodo.length > 0;
-                const noOperativoActual = medio.estadoActual === "No operativo";
+                const tbody = document.getElementById('mediosTableBody');
+                tbody.innerHTML = '';
 
-                if ((noOperativoActual || mostrarPorFallas) && mostrarPorEstado) {
-                    const row = tbody.insertRow();
-                    row.innerHTML = `
-                        <td>${medio.linea}</td>
-                        <td>${medio.estacion}</td>
-                        <td>${medio.medio}</td>
-                        <td>${fallasPeriodo.length}</td>
-                        <td>${calcularTiempoPromedio(fallasPeriodo)}</td>
-                        <td class="status-${medio.estadoActual.toLowerCase().replace(' ', '-')}">${medio.estadoActual}</td>
-                        <td>${formatDate(medio.ultimaActualizacion)}</td>
-                    `;
-                }
-            });
+                Array.from(mediosMap.values()).forEach(medio => {
+                    // Foco en asc2 de catalinas
+                    const esMedioDebug = medio.medio === 'Ascensor N°2: Vestíbulo - Salida 1 (Este) - Alem 900 (Plazoleta)' && medio.estacion === 'Catalinas';
+                    
+                    if (esMedioDebug) {
+                        console.log('[DEBUG] Procesando medio:', {
+                            ...medio,
+                            fallas: medio.fallas.map(f => f.timestamp),
+                            estadoActual: medio.estadoActual
+                        });
+                    }
 
-            // Actualizar estadísticas generales
-            const mediosFiltrados = Array.from(mediosMap.values()).filter(medio => {
-                if (linea && medio.linea !== linea) return false;
-                
-                const fallasPeriodo = medio.fallas.filter(falla => {
-                    const fechaFalla = falla.timestamp && falla.timestamp.seconds ? 
-                        new Date(falla.timestamp.seconds * 1000) : 
-                        new Date(falla.timestamp);
-                    return fechaFalla >= fechaLimite;
+                    if (linea && medio.linea !== linea) return;
+
+                    const fallasPeriodo = medio.fallas.filter(falla => {
+                        const fechaInicioFalla = falla.timestamp?.seconds ? 
+                            new Date(falla.timestamp.seconds * 1000) : 
+                            new Date(falla.timestamp);
+                        
+                        const fechaResolucion = falla.timestampResolucion?.seconds ?
+                            new Date(falla.timestampResolucion.seconds * 1000) :
+                            falla.timestampResolucion ? new Date(falla.timestampResolucion) : null;
+
+                        // Lógica mejorada de períodos
+                        const enPeriodo = (
+                            // La falla comenzó antes del final del período Y
+                            fechaInicioFalla <= new Date() && 
+                            (
+                                // 1. Sigue sin resolverse (null) O
+                                fechaResolucion === null ||
+                                // 2. Se resolvió durante el período O
+                                (fechaResolucion >= fechaLimite) ||
+                                // 3. Comenzó antes pero se extendió dentro del período
+                                (fechaInicioFalla <= fechaLimite && fechaResolucion >= fechaLimite)
+                            )
+                        );
+
+                        if (esMedioDebug) {
+                            console.log('[DEBUG] Análisis temporal:', {
+                                fechaInicio: fechaInicioFalla.toISOString(),
+                                fechaResolucion: fechaResolucion?.toISOString() || 'null',
+                                fechaLimite: fechaLimite.toISOString(),
+                                cumple: enPeriodo
+                            });
+                        }
+
+                        return enPeriodo;
+                    });
+
+                    if (esMedioDebug) {
+                        console.log('[DEBUG] Resultado del filtrado:', {
+                            totalFallas: medio.fallas.length,
+                            fallasPeriodo: fallasPeriodo.length,
+                            estadoActual: medio.estadoActual,
+                            filtroEstado: estado
+                        });
+                    }
+
+                    const mostrarPorEstado = !estado || medio.estadoActual.toLowerCase() === estado.toLowerCase();
+                    const mostrarPorFallas = fallasPeriodo.length > 0;
+                    const noOperativoActual = medio.estadoActual === "No operativo";
+
+                    if ((noOperativoActual || mostrarPorFallas) && mostrarPorEstado) {
+                        if (esMedioDebug) {
+                            console.log('[DEBUG] Mostrando medio en tabla:', {
+                                cumpleFallas: mostrarPorFallas,
+                                cumpleEstado: mostrarPorEstado,
+                                estadoActual: medio.estadoActual,
+                                decisionFinal: true
+                            });
+                        }
+                        
+                        const row = tbody.insertRow();
+                        row.innerHTML = `
+                            <td>${medio.linea}</td>
+                            <td>${medio.estacion}</td>
+                            <td>${medio.medio}</td>
+                            <td>${fallasPeriodo.length}</td>
+                            <td>${calcularTiempoPromedio(fallasPeriodo)}</td>
+                            <td class="status-${medio.estadoActual.toLowerCase().replace(' ', '-')}">${medio.estadoActual}</td>
+                            <td>${formatDate(medio.ultimaActualizacion)}</td>
+                        `;
+                    } else if (esMedioDebug) {
+                        console.log('[DEBUG] Medio no mostrado:', {
+                            razon: {
+                                noOperativoActual,
+                                mostrarPorFallas,
+                                mostrarPorEstado,
+                                estadoFiltro: estado
+                            }
+                        });
+                    }
                 });
 
-                return fallasPeriodo.length > 0 || medio.estadoActual === "No operativo";
-            });
+                // Actualizar estadísticas generales
+                const mediosFiltrados = Array.from(mediosMap.values()).filter(medio => {
+                    if (linea && medio.linea !== linea) return false;
+                    
+                    const fallasPeriodo = medio.fallas.filter(falla => {
+                        const fechaInicioFalla = falla.timestamp?.seconds ? 
+                            new Date(falla.timestamp.seconds * 1000) : 
+                            new Date(falla.timestamp);
+                        
+                        const fechaResolucion = falla.timestampResolucion?.seconds ?
+                            new Date(falla.timestampResolucion.seconds * 1000) :
+                            falla.timestampResolucion ? new Date(falla.timestampResolucion) : null;
 
-            document.getElementById('totalFallas').textContent = mediosFiltrados.reduce((total, medio) => 
-                total + medio.fallas.filter(falla => {
-                    const fechaFalla = falla.timestamp && falla.timestamp.seconds ? 
-                        new Date(falla.timestamp.seconds * 1000) : 
-                        new Date(falla.timestamp);
-                    return fechaFalla >= fechaLimite;
-                }).length, 0);
+                        // Lógica mejorada de períodos
+                        const enPeriodo = (
+                            // La falla comenzó antes del final del período Y
+                            fechaInicioFalla <= new Date() && 
+                            (
+                                // 1. Sigue sin resolverse (null) O
+                                fechaResolucion === null ||
+                                // 2. Se resolvió durante el período O
+                                (fechaResolucion >= fechaLimite) ||
+                                // 3. Comenzó antes pero se extendió dentro del período
+                                (fechaInicioFalla <= fechaLimite && fechaResolucion >= fechaLimite)
+                            )
+                        );
 
-            document.getElementById('mediosNoOperativos').textContent = mediosFiltrados.filter(m => m.estadoActual === "No operativo").length;
+                        return enPeriodo;
+                    });
 
-            // Actualizar gráfico con datos filtrados
-            actualizarGrafico();
+                    return fallasPeriodo.length > 0 || medio.estadoActual === "No operativo";
+                });
+
+                document.getElementById('totalFallas').textContent = mediosFiltrados.reduce((total, medio) => 
+                    total + medio.fallas.filter(falla => {
+                        const fechaInicioFalla = falla.timestamp?.seconds ? 
+                            new Date(falla.timestamp.seconds * 1000) : 
+                            new Date(falla.timestamp);
+                        
+                        const fechaResolucion = falla.timestampResolucion?.seconds ?
+                            new Date(falla.timestampResolucion.seconds * 1000) :
+                            falla.timestampResolucion ? new Date(falla.timestampResolucion) : null;
+
+                        // Lógica mejorada de períodos
+                        const enPeriodo = (
+                            // La falla comenzó antes del final del período Y
+                            fechaInicioFalla <= new Date() && 
+                            (
+                                // 1. Sigue sin resolverse (null) O
+                                fechaResolucion === null ||
+                                // 2. Se resolvió durante el período O
+                                (fechaResolucion >= fechaLimite) ||
+                                // 3. Comenzó antes pero se extendió dentro del período
+                                (fechaInicioFalla <= fechaLimite && fechaResolucion >= fechaLimite)
+                            )
+                        );
+
+                        return enPeriodo;
+                    }).length, 0);
+
+                document.getElementById('mediosNoOperativos').textContent = mediosFiltrados.filter(m => m.estadoActual === "No operativo").length;
+
+                // Actualizar gráfico con datos filtrados
+                actualizarGrafico();
+            } catch (error) {
+                console.error("Error al aplicar filtros:", error);
+            }
         }
 
         // Función para ordenar la tabla
