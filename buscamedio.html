@@ -70,6 +70,38 @@
             width: 100%;
             margin-bottom: 20px;
         }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+        .fixed-button {
+            position: fixed;
+            padding: 12px 24px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease-out;
+            z-index: 1000;
+            width: 200px; /* Ancho fijo para todos los botones */
+        }
+
+        .fixed-button:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body>
@@ -95,7 +127,10 @@
             <canvas id="graficoEstado"></canvas>
         </div>
 
-        <button onclick="window.location.href='index.html'" class="fixed-button">Volver al Inicio</button>
+        <div id="mensajeEstado" style="margin: 20px 0; padding: 10px; background-color: #f8f9fa; border-radius: 5px; display: none;"></div>
+
+        <button onclick="window.location.href='index.html'" class="fixed-button" style="bottom: 20px; right: 20px;">Volver al Inicio</button>
+        <button onclick="window.location.href='estadisticas3.html'" class="fixed-button" style="bottom: 110px; right: 20px;">Ver Estadísticas</button>
     </div>
 
     <script>
@@ -115,6 +150,53 @@
         let chart = null; // Variable global para el gráfico
         let renderQueue = Promise.resolve(); // Cola de renderizado
         let mediosUnicos = new Map(); // Mover mediosUnicos al scope global
+
+        // Función para normalizar timestamps en formato Microsoft JSON Date
+        function normalizarTimestamp(timestamp) {
+            if (!timestamp) return null;
+            
+            try {
+                // Caso 1: Microsoft JSON Date format /Date(1234567890123)/
+                if (typeof timestamp === 'string' && timestamp.startsWith('/Date(') && timestamp.endsWith(')/')) {
+                    const milliseconds = parseInt(timestamp.substring(6, timestamp.length - 2), 10);
+                    return new Date(milliseconds);
+                }
+                
+                // Caso 2: Objeto con propiedades _seconds y _nanoseconds (Firestore Timestamp)
+                if (timestamp && typeof timestamp === 'object' && '_seconds' in timestamp) {
+                    return new Date(timestamp._seconds * 1000 + (timestamp._nanoseconds || 0) / 1000000);
+                }
+                
+                // Caso 3: Objeto con propiedades seconds y nanoseconds (Firestore Timestamp)
+                if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+                    return new Date(timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000);
+                }
+                
+                // Caso 4: String ISO
+                if (typeof timestamp === 'string') {
+                    const date = new Date(timestamp);
+                    if (!isNaN(date.getTime())) {
+                        return date;
+                    }
+                }
+                
+                // Caso 5: Ya es un objeto Date
+                if (timestamp instanceof Date) {
+                    return timestamp;
+                }
+                
+                // Caso 6: Número (timestamp en milisegundos)
+                if (typeof timestamp === 'number') {
+                    return new Date(timestamp);
+                }
+                
+                console.warn('⚠️ Formato de timestamp no reconocido:', timestamp);
+                return null;
+            } catch (error) {
+                console.error('❌ Error al normalizar timestamp:', error, timestamp);
+                return null;
+            }
+        }
 
         // Inicialización de Firebase con verificación
         try {
@@ -146,8 +228,19 @@
 
             // Función para obtener fecha de fin (23:59:59)
             function getFechaFin(fecha) {
-                const fechaFin = new Date(fecha);
+                // Crear una fecha a partir del string YYYY-MM-DD
+                const [year, month, day] = fecha.split('-').map(Number);
+                const fechaFin = new Date(year, month - 1, day);
+                
+                // Sumar un día a la fecha seleccionada como quickfix
+                fechaFin.setDate(fechaFin.getDate() + 1);
+                
+                // Establecer la hora a 23:59:59
                 fechaFin.setHours(23, 59, 59, 999);
+                
+                console.log('Componentes de fecha fin:', { year, month, day });
+                console.log('Fecha fin construida (con +1 día):', fechaFin.toLocaleString());
+                
                 return fechaFin;
             }
 
@@ -303,6 +396,11 @@
             }
         }
 
+        // Función para convertir una fecha a formato Microsoft JSON Date
+        function fechaAMicrosoftJSONDate(fecha) {
+            return `/Date(${fecha.getTime()})/`;
+        }
+
         async function buscarMedio() {
             const nombreMedio = document.getElementById('nombreMedio').value;
             const fechaInicio = document.getElementById('fechaInicio').value;
@@ -317,15 +415,20 @@
             try {
                 // Si no hay texto de búsqueda, limpiar gráfico
                 if (!nombreMedio.trim()) {
+                    mostrarMensaje('Ingrese el nombre de un medio de elevación para buscar', 'warning');
                     enqueueRender(() => limpiarGrafico());
                     return;
                 }
+
+                // Mostrar mensaje de carga
+                mostrarMensaje('Buscando datos, por favor espere...');
 
                 // Verificar si el medio existe exactamente como está escrito
                 const medioExacto = Array.from(mediosUnicos.keys())
                     .find(medio => medio === nombreMedio.trim());
 
                 if (!medioExacto) {
+                    mostrarMensaje(`No se encontró un medio de elevación con el nombre exacto: "${nombreMedio}"`, 'warning');
                     console.log('ℹ️ No hay match exacto para el medio:', nombreMedio);
                     enqueueRender(() => limpiarGrafico());
                     return;
@@ -341,14 +444,11 @@
                 });
 
                 // Buscar registros para el medio exacto
-                const todosLosRegistros = await db.collection("historialCambios")
-                    .orderBy("timestamp", "desc")
-                    .get();
-                
-                const registrosPorMedio = todosLosRegistros.docs.filter(doc => {
-                    const data = doc.data();
-                    return data.medioElevacion === medioExacto;
-                });
+                // Primero obtenemos todos los documentos para este medio específico
+                const registrosPorMedio = await db.collection("historialCambios")
+                    .where("medioElevacion", "==", medioExacto)
+                    .get()
+                    .then(snapshot => snapshot.docs);
 
                 console.log(`📊 Total de registros históricos encontrados para el medio "${medioExacto}":`, registrosPorMedio.length);
 
@@ -356,8 +456,8 @@
                 const resultados = registrosPorMedio.filter(doc => {
                     const data = doc.data();
                     try {
-                        const timestamp = new Date(data.timestamp);
-                        if (isNaN(timestamp.getTime())) {
+                        const timestamp = normalizarTimestamp(data.timestamp);
+                        if (!timestamp) {
                             console.warn('⚠️ Timestamp inválido encontrado:', data.timestamp);
                             return false;
                         }
@@ -371,21 +471,51 @@
                 console.log(`📅 Registros dentro del período seleccionado (${fechaInicioCompleta.toLocaleString()} - ${fechaFinCompleta.toLocaleString()}):`, resultados.length);
                 
                 if (registrosPorMedio.length > 0 && resultados.length === 0) {
+                    mostrarMensaje(`No hay registros para "${medioExacto}" en el período seleccionado`, 'warning');
                     console.log('⚠️ Hay registros para este medio pero ninguno en el período seleccionado');
                     enqueueRender(() => limpiarGrafico());
                     return;
                 }
 
                 // Encolar el renderizado del gráfico
-                enqueueRender(() => procesarDatosGrafico(resultados));
+                enqueueRender(() => procesarDatosGrafico(resultados, medioExacto));
 
             } catch (error) {
+                mostrarMensaje(`Error al buscar datos: ${error.message}`, 'error');
                 console.error('❌ Error en la búsqueda:', error);
                 enqueueRender(() => limpiarGrafico());
             }
         }
 
-        function procesarDatosGrafico(docs) {
+        // Función para mostrar mensajes de estado
+        function mostrarMensaje(mensaje, tipo = 'info') {
+            const mensajeEstado = document.getElementById('mensajeEstado');
+            mensajeEstado.innerHTML = mensaje;
+            mensajeEstado.style.display = 'block';
+            
+            // Aplicar estilo según el tipo de mensaje
+            if (tipo === 'error') {
+                mensajeEstado.style.backgroundColor = '#f8d7da';
+                mensajeEstado.style.color = '#721c24';
+            } else if (tipo === 'warning') {
+                mensajeEstado.style.backgroundColor = '#fff3cd';
+                mensajeEstado.style.color = '#856404';
+            } else if (tipo === 'success') {
+                mensajeEstado.style.backgroundColor = '#d4edda';
+                mensajeEstado.style.color = '#155724';
+            } else {
+                mensajeEstado.style.backgroundColor = '#f8f9fa';
+                mensajeEstado.style.color = '#212529';
+            }
+        }
+
+        // Función para ocultar el mensaje de estado
+        function ocultarMensaje() {
+            const mensajeEstado = document.getElementById('mensajeEstado');
+            mensajeEstado.style.display = 'none';
+        }
+
+        function procesarDatosGrafico(docs, nombreMedio) {
             console.log('🔄 Procesando datos para el gráfico');
             try {
                 // Limpiar gráfico anterior
@@ -393,6 +523,7 @@
 
                 // Si no hay datos, no crear nuevo gráfico
                 if (!docs || docs.length === 0) {
+                    mostrarMensaje('No hay datos para mostrar', 'info');
                     console.log('ℹ️ No hay datos para mostrar');
                     return;
                 }
@@ -402,23 +533,38 @@
                     chart.destroy();
                 }
 
+                // Mostrar información sobre los formatos de timestamp encontrados
+                const muestraTimestamps = docs.slice(0, 3).map(doc => doc.data().timestamp);
+                console.log('📅 Muestra de formatos de timestamp:', muestraTimestamps);
+
                 // Agrupar datos por timestamp
                 const datosOrdenados = docs.map(doc => {
                     const data = doc.data();
                     try {
-                        // Convertir el timestamp ISO string a Date
-                        const timestamp = new Date(data.timestamp);
+                        // Normalizar el timestamp usando la función
+                        const timestamp = normalizarTimestamp(data.timestamp);
                         
                         // Verificar si la fecha es válida
-                        if (isNaN(timestamp.getTime())) {
+                        if (!timestamp) {
                             console.warn('⚠️ Timestamp inválido encontrado:', data.timestamp);
                             return null;
+                        }
+
+                        // Mostrar información de depuración para algunos registros
+                        if (docs.indexOf(doc) < 3) {
+                            console.log('🔍 Timestamp procesado:', {
+                                original: data.timestamp,
+                                normalizado: timestamp,
+                                formato: typeof data.timestamp === 'string' && data.timestamp.startsWith('/Date(') ? 'Microsoft JSON Date' : 'Otro formato'
+                            });
                         }
 
                         return {
                             timestamp: timestamp,
                             estado: data.estado === "Operativo" ? 1 : 0,
-                            fechaHora: timestamp.toLocaleString()
+                            fechaHora: timestamp.toLocaleString(),
+                            timestampOriginal: data.timestamp, // Guardar el timestamp original para referencia
+                            esReal: true // Marcar como punto real (no extendido)
                         };
                     } catch (error) {
                         console.warn('⚠️ Error al procesar timestamp en gráfico:', error);
@@ -428,9 +574,40 @@
                 .filter(item => item !== null) // Eliminar entradas inválidas
                 .sort((a, b) => a.timestamp - b.timestamp); // Ordenar cronológicamente
 
+                // Obtener la fecha de fin del filtro
+                const fechaFinInput = document.getElementById('fechaFin').value;
+                const fechaFinCompleta = getFechaFin(fechaFinInput);
+                
+                let hayExtension = false;
+                
+                // Extender el último estado conocido hasta la fecha final (forward filling)
+                if (datosOrdenados.length > 0) {
+                    const ultimoDato = datosOrdenados[datosOrdenados.length - 1];
+                    const ultimoTimestamp = ultimoDato.timestamp;
+                    
+                    // Solo agregar un punto adicional si la fecha fin es posterior al último dato
+                    if (fechaFinCompleta > ultimoTimestamp) {
+                        hayExtension = true;
+                        console.log('📈 Extendiendo último estado conocido hasta:', fechaFinCompleta.toLocaleString());
+                        
+                        // Agregar un punto adicional con el mismo estado que el último conocido
+                        datosOrdenados.push({
+                            timestamp: fechaFinCompleta,
+                            estado: ultimoDato.estado,
+                            fechaHora: fechaFinCompleta.toLocaleString(),
+                            timestampOriginal: null,
+                            esReal: false, // No es un punto real
+                            esExtension: true // Marcar como punto extendido
+                        });
+                    }
+                }
+
                 console.log('📊 Datos procesados:', {
                     totalPuntos: datosOrdenados.length,
-                    datos: datosOrdenados
+                    puntosReales: datosOrdenados.filter(d => d.esReal).length,
+                    hayExtension: hayExtension,
+                    primerPunto: datosOrdenados.length > 0 ? datosOrdenados[0] : null,
+                    ultimoPunto: datosOrdenados.length > 0 ? datosOrdenados[datosOrdenados.length - 1] : null
                 });
                 
                 const ctx = document.getElementById('graficoEstado').getContext('2d');
@@ -449,7 +626,12 @@
                                 borderColor: 'rgb(75, 192, 192)',
                                 backgroundColor: 'rgba(75, 192, 192, 0.1)',
                                 tension: 0,
-                                pointRadius: 5,
+                                pointRadius: function(context) {
+                                    // Hacer que los puntos extendidos sean más pequeños pero del mismo color
+                                    const dataPoint = datosOrdenados[context.dataIndex];
+                                    return dataPoint && !dataPoint.esReal ? 3 : 5;
+                                },
+                                pointBackgroundColor: 'rgb(75, 192, 192)',
                                 pointHoverRadius: 8,
                                 stepped: true,
                                 hitRadius: 10
@@ -462,12 +644,21 @@
                         plugins: {
                             title: {
                                 display: true,
-                                text: 'Estado del Medio'
+                                text: nombreMedio ? `Estado del Medio: ${nombreMedio}` : 'Estado del Medio'
                             },
                             tooltip: {
                                 callbacks: {
                                     label: function(context) {
-                                        return `Estado: ${context.raw.y === 1 ? 'Operativo' : 'No Operativo'}`;
+                                        const dataPoint = datosOrdenados[context.dataIndex];
+                                        return `Estado: ${dataPoint.estado === 1 ? 'Operativo' : 'No Operativo'}`;
+                                    },
+                                    afterLabel: function(context) {
+                                        const dataPoint = datosOrdenados[context.dataIndex];
+                                        let label = `Fecha: ${dataPoint.fechaHora}`;
+                                        if (!dataPoint.esReal) {
+                                            label += ' (Estado extendido)';
+                                        }
+                                        return label;
                                     }
                                 }
                             }
@@ -485,7 +676,10 @@
                                 title: {
                                     display: true,
                                     text: 'Fecha y Hora'
-                                }
+                                },
+                                // Asegurar que el eje X muestre todo el rango de fechas seleccionado
+                                min: getFechaInicio(document.getElementById('fechaInicio').value).getTime(),
+                                max: fechaFinCompleta.getTime()
                             },
                             y: {
                                 min: -0.1,
@@ -518,7 +712,21 @@
                 });
                 
                 console.log('✅ Gráfico renderizado correctamente con', datosOrdenados.length, 'puntos de datos');
+                
+                // Mostrar mensaje con información sobre la extensión
+                if (hayExtension) {
+                    const ultimoReal = datosOrdenados.filter(d => d.esReal).pop();
+                    const mensajeExtension = `
+                        <div style="margin-bottom: 5px;">Se encontraron <strong>${datosOrdenados.filter(d => d.esReal).length} registros</strong> para "${nombreMedio || 'el medio seleccionado'}".</div>
+                        <div>El último estado conocido (<strong>${ultimoReal.estado === 1 ? 'Operativo' : 'No Operativo'}</strong>) 
+                        del <strong>${ultimoReal.fechaHora}</strong> ha sido extendido hasta el <strong>${fechaFinCompleta.toLocaleString()}</strong>.</div>
+                    `;
+                    mostrarMensaje(mensajeExtension, 'info');
+                } else {
+                    mostrarMensaje(`Se encontraron <strong>${datosOrdenados.length} registros</strong> para "${nombreMedio || 'el medio seleccionado'}"`, 'success');
+                }
             } catch (error) {
+                mostrarMensaje(`Error al procesar datos: ${error.message}`, 'error');
                 console.error('❌ Error al procesar datos:', error);
             }
         }
@@ -532,8 +740,19 @@
 
         // Función para obtener fecha de fin (23:59:59)
         function getFechaFin(fecha) {
-            const fechaFin = new Date(fecha);
+            // Crear una fecha a partir del string YYYY-MM-DD
+            const [year, month, day] = fecha.split('-').map(Number);
+            const fechaFin = new Date(year, month - 1, day);
+            
+            // Sumar un día a la fecha seleccionada como quickfix
+            fechaFin.setDate(fechaFin.getDate() + 0);
+            
+            // Establecer la hora a 23:59:59
             fechaFin.setHours(23, 59, 59, 999);
+            
+            console.log('Componentes de fecha fin:', { year, month, day });
+            console.log('Fecha fin construida (con +1 día):', fechaFin.toLocaleString());
+            
             return fechaFin;
         }
     </script>

@@ -5,11 +5,56 @@ const { obtenerHorarioServicio, estaEnHorarioServicio, calcularTiempoServicioDia
 
 admin.initializeApp();
 
+// Funciones auxiliares para manejo de fechas Microsoft JSON Date
+function toMicrosoftDate(date) {
+  if (typeof date === 'string') {
+    date = new Date(date);
+  }
+  return `/Date(${date.getTime()})/`;
+}
+
+function fromMicrosoftDate(microsoftDate) {
+  if (!microsoftDate) return null;
+  const matches = microsoftDate.match(/\/Date\((-?\d+)([+-]\d{4})?\)\//);
+  if (matches) {
+    return new Date(parseInt(matches[1]));
+  }
+  return new Date(microsoftDate);
+}
+
+function getMicrosoftTimestamp() {
+  return toMicrosoftDate(new Date());
+}
+
+function getMicrosoftStartOfDay() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return toMicrosoftDate(date);
+}
+
+// Nueva ubicación para la función
+function normalizarParaComparacion(timestamp) {
+    if (!timestamp) return null;
+    
+    try {
+        if (typeof timestamp === 'string' && timestamp.startsWith('/Date(')) {
+            const matches = timestamp.match(/\/Date\((-?\d+)([+-]\d{4})?\)\//);
+            if (matches) {
+                return parseInt(matches[1]);
+            }
+        }
+        return new Date(timestamp).getTime();
+    } catch (error) {
+        console.error(`[${getMicrosoftTimestamp()}] Error normalizando timestamp:`, error);
+        return null;
+    }
+}
+
 const runtimeOpts = {
-  timeoutSeconds: 300,
+  timeoutSeconds: 300,  // Disminuímos el timeout a 30 segundos
   memory: '256MB',
-  minInstances: 0,
-  maxInstances: 1,
+  minInstances: 0,     // Mantenemos al menos una instancia activa
+  maxInstances: 3,     // Limitamos a 2 instancias máximo para controlar costos
   region: 'southamerica-east1'
 };
 
@@ -27,70 +72,18 @@ exports.listBuckets = functions
     try {
       // En Firebase Admin SDK, el bucket por defecto es <project-id>.appspot.com
       const defaultBucket = admin.storage().bucket();
-      console.log('Bucket por defecto:', defaultBucket.name);
+      console.log(`[${getMicrosoftTimestamp()}] Bucket por defecto:`, defaultBucket.name);
       res.json({ defaultBucket: defaultBucket.name });
     } catch (error) {
-      console.error('Error obteniendo bucket:', error);
+      console.error(`[${getMicrosoftTimestamp()}] Error obteniendo bucket:`, error);
       res.status(500).send('Error getting bucket: ' + error.message);
     }
   });
-
-// Función para escribir logs
-async function writeToLog(message) {
-  const timestamp = new Date().toISOString();
-  const logMessage = `[${timestamp}] ${message}\n`;
-  
-  try {
-    const bucket = admin.storage().bucket();
-    const today = new Date().toISOString().split('T')[0];
-    const fileName = `logs/cambios_estado_${today}.txt`;
-    const file = bucket.file(fileName);
-    
-    console.log('Intentando escribir en bucket:', bucket.name);
-    console.log('Archivo:', fileName);
-    
-    const [exists] = await file.exists();
-    
-    if (!exists) {
-      await file.save(logMessage);
-      console.log('Archivo creado');
-    } else {
-      await file.append(logMessage);
-      console.log('Contenido agregado');
-    }
-  } catch (error) {
-    console.error('Error escribiendo al log:', error);
-    if (error.code) console.error('Código de error:', error.code);
-    if (error.details) console.error('Detalles:', error.details);
-  }
-}
 
 // Función auxiliar para comparar estados y encontrar cambios
 async function compararEstados(estadoAnterior, estadoNuevo, db) {
   const cambios = [];
   
-  // Función helper para normalizar timestamp al momento de comparar
-  function normalizarParaComparacion(timestamp) {
-    if (!timestamp) return null;
-    
-    try {
-      // Si es formato Microsoft JSON Date
-      if (typeof timestamp === 'string' && timestamp.startsWith('/Date(')) {
-        const matches = timestamp.match(/\/Date\((-?\d+)([+-]\d{4})\)\//);
-        if (matches) {
-          const milliseconds = parseInt(matches[1]);
-          return new Date(milliseconds).getTime();
-        }
-      }
-      
-      // Si es formato ISO o timestamp válido
-      return new Date(timestamp).getTime();
-    } catch (error) {
-      console.error('Error normalizando timestamp para comparación:', error);
-      return null;
-    }
-  }
-
   // Crear mapa del estado anterior
   const accesoMap = new Map();
   if (Array.isArray(estadoAnterior)) {
@@ -116,133 +109,154 @@ async function compararEstados(estadoAnterior, estadoNuevo, db) {
         const key = `${linea.nombre}|${estacion.nombre}|${acceso.descripcion}`;
         const accesoAnterior = accesoMap.get(key);
         
+        // Nuevo logging para medios no encontrados
+        if (!accesoAnterior) {
+          console.log(`[${getMicrosoftTimestamp()}] Medio no encontrado en estadoActual`, {
+            linea: linea.nombre,
+            estacion: estacion.nombre,
+            medio: acceso.descripcion,
+            detallesNuevo: {
+              funcionando: acceso.funcionando,
+              timestamp: acceso.fechaActualizacion
+            }
+          });
+        }
+        
         // Normalizar timestamp del estado nuevo para comparación
         const fechaNuevaNormalizada = normalizarParaComparacion(acceso.fechaActualizacion);
 
-        // Detectar cambio de estado o timestamp
+        // Detectar cambios
         const cambioEstado = !accesoAnterior || accesoAnterior.funcionando !== acceso.funcionando;
         const cambioTimestamp = accesoAnterior && 
-                              fechaNuevaNormalizada !== accesoAnterior.fechaActualizacionNormalizada;
+            accesoAnterior.fechaActualizacionNormalizada !== fechaNuevaNormalizada;
 
         if (cambioEstado || cambioTimestamp) {
-          const timestamp = new Date().toISOString();
-          const mensaje = `${linea.nombre} - ${estacion.nombre} - ${acceso.descripcion}: ${
-            accesoAnterior?.funcionando ? 'Operativo' : 'No existe/No operativo'
-          } -> ${
-            acceso.funcionando ? 'Operativo' : 'No operativo'
-          }`;
-          await writeToLog(mensaje);
+          const timestamp = acceso.fechaActualizacion; // Siempre usar el timestamp de la API
           
-          // Si pasó de no operativo a operativo, actualizar el timestampResolucion
-          if (accesoAnterior && !accesoAnterior.funcionando && acceso.funcionando) {
+          // Log extendido
+          console.log(`[${getMicrosoftTimestamp()}] Cambio detectado en:`, { 
+              linea: linea.nombre,
+              estacion: estacion.nombre,
+              medio: acceso.descripcion,
+              razon: {
+                  cambioEstado: cambioEstado ? 'ESTADO DIFERENTE' : 'MISMO ESTADO',
+                  cambioTimestamp: cambioTimestamp ? 'TIMESTAMP DIFERENTE' : 'MISMO TIMESTAMP',
+                  valores: {
+                      anterior: {
+                          funcionando: accesoAnterior?.funcionando ?? 'NO EXISTIA',
+                          raw: accesoAnterior?.fechaActualizacion ?? 'N/A',
+                          normalized: accesoAnterior?.fechaActualizacionNormalizada ?? 'N/A',
+                          timestampAnteriorMs: accesoAnterior?.fechaActualizacionNormalizada ?? 'N/A'
+                      },
+                      nuevo: {
+                          funcionando: acceso.funcionando,
+                          raw: acceso.fechaActualizacion,
+                          normalized: fechaNuevaNormalizada,
+                          timestampNuevoMs: fechaNuevaNormalizada
+                      }
+                  },
+                  diferenciaMs: accesoAnterior ? 
+                      fechaNuevaNormalizada - accesoAnterior.fechaActualizacionNormalizada : 
+                      'N/A'
+              }
+          });
+
+          // Solo agregar a cambios si es cambio de ESTADO
+          if (cambioEstado) {
+            // Si pasó de no operativo a operativo, actualizar el timestampResolucion del último documento
+            if (accesoAnterior && !accesoAnterior.funcionando && acceso.funcionando) {
+              try {
+                const querySnapshot = await db.collection("historialCambios")
+                  .where("linea", "==", linea.nombre)
+                  .where("estacion", "==", estacion.nombre)
+                  .where("medioElevacion", "==", acceso.descripcion)
+                  .where("estado", "==", "No operativo")
+                  .where("timestampResolucion", "==", null)
+                  .orderBy("timestamp", "desc")
+                  .limit(1)
+                  .get();
+
+                if (!querySnapshot.empty) {
+                  await querySnapshot.docs[0].ref.update({
+                    timestampResolucion: timestamp // Usar el timestamp de la API
+                  });
+                  console.log(`[${getMicrosoftTimestamp()}] ✓ Resuelto: Se actualizó timestampResolucion con timestamp de API`);
+                } else {
+                  console.log(`[${getMicrosoftTimestamp()}] ! No se encontró falla anterior sin resolver`);
+                }
+              } catch (error) {
+                console.error(`[${getMicrosoftTimestamp()}] ! Error actualizando timestampResolucion: ${error.message}`);
+              }
+            }
+
+            // Registrar el cambio en historialCambios
+            cambios.push({
+              linea: linea.nombre,
+              estacion: estacion.nombre,
+              medioElevacion: acceso.descripcion,
+              estado: acceso.funcionando ? "Operativo" : "No operativo",
+              id: acceso.nombre,
+              timestamp: timestamp,
+              timestampResolucion: null,
+            });
+
+            // Actualizar estadísticas diarias
             try {
-              const querySnapshot = await db.collection("historialCambios")
+              const fecha = timestamp.split('T')[0];
+              const estadisticaQuery = await db.collection("estadisticasDiarias")
+                .where("fecha", "==", fecha)
                 .where("linea", "==", linea.nombre)
                 .where("estacion", "==", estacion.nombre)
                 .where("medioElevacion", "==", acceso.descripcion)
-                .where("estado", "==", "No operativo")
-                .where("timestampResolucion", "==", null)
-                .orderBy("timestamp", "desc")
                 .limit(1)
                 .get();
 
-              if (!querySnapshot.empty) {
-                await querySnapshot.docs[0].ref.update({
-                  timestampResolucion: timestamp
+              if (!estadisticaQuery.empty) {
+                const doc = estadisticaQuery.docs[0];
+                const estadisticas = doc.data().estadisticas;
+                
+                // Agregar nuevo estado
+                estadisticas.estados.push({
+                  timestamp: timestamp,
+                  estado: acceso.funcionando ? "Operativo" : "No operativo"
                 });
-                await writeToLog(`  ✓ Resuelto: Se actualizó timestampResolucion`);
-              } else {
-                await writeToLog(`  ! No se encontró falla anterior sin resolver`);
+
+                // Si estamos en horario de servicio y pasa a no operativo, incrementar contador
+                if (!acceso.funcionando && estaEnHorarioServicio(linea.nombre, timestamp)) {
+                  estadisticas.cantidadFallas++;
+                }
+
+                await doc.ref.update({ estadisticas });
               }
             } catch (error) {
-              await writeToLog(`  ! Error actualizando timestampResolucion: ${error.message}`);
+              console.error(`[${timestamp}] Error actualizando estadísticas diarias: ${error.message}`);
             }
           }
-
-          // Registrar el cambio en historialCambios
-          cambios.push({
+        } else {
+          const timestamp = getMicrosoftTimestamp();
+          console.debug(`[${timestamp}] Sin cambios en:`, {
             linea: linea.nombre,
             estacion: estacion.nombre,
-            medioElevacion: acceso.descripcion,
-            estado: acceso.funcionando ? "Operativo" : "No operativo",
-            timestamp: timestamp,
-            timestampResolucion: null
-          });
-
-          // Actualizar estadísticas diarias
-          try {
-            const fecha = timestamp.split('T')[0];
-            const estadisticaQuery = await db.collection("estadisticasDiarias")
-              .where("fecha", "==", fecha)
-              .where("linea", "==", linea.nombre)
-              .where("estacion", "==", estacion.nombre)
-              .where("medioElevacion", "==", acceso.descripcion)
-              .limit(1)
-              .get();
-
-            if (!estadisticaQuery.empty) {
-              const doc = estadisticaQuery.docs[0];
-              const estadisticas = doc.data().estadisticas;
-              
-              // Agregar nuevo estado
-              estadisticas.estados.push({
-                timestamp: timestamp,
-                estado: acceso.funcionando ? "Operativo" : "No operativo"
-              });
-
-              // Si estamos en horario de servicio y pasa a no operativo, incrementar contador
-              if (!acceso.funcionando && estaEnHorarioServicio(linea.nombre, timestamp)) {
-                estadisticas.cantidadFallas++;
-              }
-
-              await doc.ref.update({ estadisticas });
+            medio: acceso.descripcion,
+            razon: {
+              mismoEstado: accesoAnterior?.funcionando === acceso.funcionando,
+              mismoTimestamp: accesoAnterior?.fechaActualizacionNormalizada === fechaNuevaNormalizada
             }
-          } catch (error) {
-            await writeToLog(`Error actualizando estadísticas diarias: ${error.message}`);
-          }
+          });
         }
       }
     }
   }
   
   if (cambios.length > 0) {
-    await writeToLog(`Total cambios detectados: ${cambios.length}`);
+    console.log(`[${getMicrosoftTimestamp()}] Total cambios detectados: ${cambios.length}`);
   }
   return cambios;
 }
 
-// Función para descargar logs
-exports.downloadLogs = functions
-  .runWith(runtimeOpts)
-  .region('southamerica-east1')
-  .https.onRequest(async (req, res) => {
-    try {
-      // Obtener fecha del query param o usar la fecha actual
-      const date = req.query.date || new Date().toISOString().split('T')[0];
-      const fileName = `logs/cambios_estado_${date}.txt`;
-      const bucket = admin.storage().bucket();
-      const file = bucket.file(fileName);
-      
-      // Verificar si existe el archivo
-      const [exists] = await file.exists();
-      if (!exists) {
-        res.status(404).send(`No hay logs para la fecha ${date}`);
-        return;
-      }
-      
-      // Descargar y enviar el contenido
-      const [content] = await file.download();
-      res.set('Content-Type', 'text/plain');
-      res.send(content);
-      
-    } catch (error) {
-      res.status(500).send('Error reading logs: ' + error.message);
-    }
-  });
-
 // Función para inicializar estadísticas diarias si no existen
 async function iniciarEstadisticasDiarias(db, estado) {
-  const fecha = new Date().toISOString().split('T')[0];
+  const fecha = getMicrosoftStartOfDay();
   
   try {
     // Verificar si ya existen estadísticas para hoy
@@ -261,19 +275,21 @@ async function iniciarEstadisticasDiarias(db, estado) {
       linea.estaciones.forEach(estacion => {
         estacion.accesos.forEach(acceso => {
           const docRef = db.collection("estadisticasDiarias").doc();
+          const horarioServicio = obtenerHorarioServicio(linea.nombre);
+          
           batch.set(docRef, {
             fecha,
             linea: linea.nombre,
             estacion: estacion.nombre,
             medioElevacion: acceso.descripcion,
-            horaInicioServicio: obtenerHorarioServicio(linea.nombre).inicio,
-            horaFinServicio: obtenerHorarioServicio(linea.nombre).fin,
+            horaInicioServicio: toMicrosoftDate(new Date(horarioServicio.inicio)),
+            horaFinServicio: toMicrosoftDate(new Date(horarioServicio.fin)),
             estadisticas: {
               tiempoTotalServicio: calcularTiempoServicioDiario(linea.nombre),
               tiempoNoOperativo: 0,
               cantidadFallas: 0,
               estados: [{
-                timestamp: new Date().toISOString(),
+                timestamp: getMicrosoftTimestamp(),
                 estado: acceso.funcionando ? "Operativo" : "No operativo"
               }]
             }
@@ -283,9 +299,9 @@ async function iniciarEstadisticasDiarias(db, estado) {
     });
     
     await batch.commit();
-    await writeToLog(`Estadísticas diarias iniciadas para ${fecha}`);
+    console.log(`[${getMicrosoftTimestamp()}] Estadísticas diarias iniciadas para ${fecha}`);
   } catch (error) {
-    await writeToLog(`Error iniciando estadísticas diarias: ${error.message}`);
+    console.error(`[${getMicrosoftTimestamp()}] Error iniciando estadísticas diarias: ${error.message}`);
     throw error;
   }
 }
@@ -293,7 +309,7 @@ async function iniciarEstadisticasDiarias(db, estado) {
 exports.detectarCambios = functions
   .runWith(runtimeOpts)
   .region('southamerica-east1')
-  .pubsub.schedule("*/1 * * * *")  // Cada 1 minuto
+  .pubsub.schedule("*/5 * * * *")  // Cada 5 minutos
   .timeZone("America/Argentina/Buenos_Aires")
   .onRun(async (context) => {
     const db = admin.firestore();
@@ -308,7 +324,7 @@ exports.detectarCambios = functions
       const estadoDoc = await db.collection("estadoActual").doc("estado").get();
       const estadoAnterior = estadoDoc.exists ? estadoDoc.data().estado : null;
 
-      // 3. Inicializar estadísticas si no existen
+      // 3. Inicializar estadísticas si no existen.
       await iniciarEstadisticasDiarias(db, estadoNuevo);
 
       // 4. Si no hay estado anterior, guardar el estado actual completo
@@ -320,14 +336,14 @@ exports.detectarCambios = functions
             ...estacion,
             accesos: estacion.accesos.map(acceso => ({
               ...acceso,
-              fechaActualizacion: new Date().toISOString()
+              fechaActualizacion: getMicrosoftTimestamp()
             }))
           }))
         }));
         
         await db.collection("estadoActual").doc("estado").set({
           estado: estadoConFechas,
-          timestamp: new Date().toISOString()
+          timestamp: getMicrosoftTimestamp()
         });
         return null;
       }
@@ -343,7 +359,7 @@ exports.detectarCambios = functions
             return {
               ...estacion,
               accesos: estacion.accesos.map(acceso => {
-                // Buscar si este acceso tuvo un cambio
+                // Buscar si este acceso tuvo algún cambio
                 const cambio = cambios.find(c => 
                   c.linea === linea.nombre && 
                   c.estacion === estacion.nombre && 
@@ -356,13 +372,14 @@ exports.detectarCambios = functions
                   ?.estaciones?.find(e => e.nombre === estacion.nombre)
                   ?.accesos?.find(a => a.descripcion === acceso.descripcion)
                   ?.fechaActualizacion;
-                
+
                 return {
                   ...acceso,
-                  // Si hubo cambio o no hay fecha anterior, usar timestamp actual
-                  fechaActualizacion: cambio || !fechaAnterior ? 
-                    new Date().toISOString() : 
-                    fechaAnterior
+                  // Si hubo cambio (de estado o timestamp), usar el timestamp de la API
+                  // Si no hubo cambios, mantener fecha anterior
+                  fechaActualizacion: cambio ? 
+                      acceso.fechaActualizacion : // Usar el timestamp de la API
+                      fechaAnterior // Mantener el anterior si no hay cambios
                 };
               })
             };
@@ -376,33 +393,26 @@ exports.detectarCambios = functions
           // Guardar el nuevo estado
           transaction.set(db.collection("estadoActual").doc("estado"), {
             estado: estadoConFechas,
-            timestamp: new Date().toISOString()
+            timestamp: getMicrosoftTimestamp()
           });
 
           // Si hay cambios, registrarlos en historialCambios
           if (cambios.length > 0) {
             for (const cambio of cambios) {
               const docRef = db.collection("historialCambios").doc();
-              transaction.set(docRef, {
-                ...cambio,
-                timestamp: new Date().toISOString(),
-                timestampResolucion: null
-              });
+              transaction.set(docRef, cambio);
             }
           }
         });
       } catch (error) {
-        await writeToLog("Error en la transacción de Firestore: " + error.message);
         console.error("Error en la transacción de Firestore:", error);
         throw error;
       }
 
       return null;
     } catch (error) {
-      await writeToLog("Error en la función detectarCambios: " + error.message);
       console.error("Error en la función detectarCambios:", error);
       if (error.response) {
-        await writeToLog("Error de respuesta API: " + error.response.status + " " + JSON.stringify(error.response.data));
         console.error("Error de respuesta API:", {
           status: error.response.status,
           data: error.response.data
@@ -412,7 +422,7 @@ exports.detectarCambios = functions
     }
   });
 
-// Nueva función para cerrar estadísticas del día
+// Función para cerrar estadísticas del día
 exports.cerrarEstadisticasDiarias = functions
   .runWith(runtimeOpts)
   .region('southamerica-east1')
@@ -420,7 +430,7 @@ exports.cerrarEstadisticasDiarias = functions
   .timeZone("America/Argentina/Buenos_Aires")
   .onRun(async (context) => {
     const db = admin.firestore();
-    const fecha = new Date().toISOString().split('T')[0];
+    const fecha = getMicrosoftStartOfDay();
     
     try {
       const snapshot = await db.collection("estadisticasDiarias")
@@ -436,11 +446,11 @@ exports.cerrarEstadisticasDiarias = functions
         // Calcular tiempo no operativo durante horario de servicio
         for (let i = 0; i < estados.length - 1; i++) {
           if (estados[i].estado === "No operativo") {
-            const inicio = new Date(estados[i].timestamp);
-            const fin = new Date(estados[i + 1].timestamp);
+            const inicio = parseInt(estados[i].timestamp.match(/\/Date\((\d+)\)\//)[1]);
+            const fin = parseInt(estados[i + 1].timestamp.match(/\/Date\((\d+)\)\//)[1]);
             
             // Solo contar tiempo si estaba en horario de servicio
-            if (estaEnHorarioServicio(data.linea, estados[i].timestamp)) {
+            if (estaEnHorarioServicio(data.linea, fromMicrosoftDate(estados[i].timestamp).toISOString())) {
               tiempoNoOperativo += fin - inicio;
             }
           }
@@ -448,11 +458,13 @@ exports.cerrarEstadisticasDiarias = functions
         
         // Si el último estado es no operativo, contar hasta fin de servicio
         const ultimoEstado = estados[estados.length - 1];
-        if (ultimoEstado.estado === "No operativo" && 
-            estaEnHorarioServicio(data.linea, ultimoEstado.timestamp)) {
-          const finServicio = new Date();
-          finServicio.setHours(23, 59, 59, 999);
-          tiempoNoOperativo += finServicio - new Date(ultimoEstado.timestamp);
+        if (ultimoEstado.estado === "No operativo") {
+          const inicioUltimo = parseInt(ultimoEstado.timestamp.match(/\/Date\((\d+)\)\//)[1]);
+          if (estaEnHorarioServicio(data.linea, fromMicrosoftDate(ultimoEstado.timestamp).toISOString())) {
+            const finServicio = new Date();
+            finServicio.setHours(23, 59, 59, 999);
+            tiempoNoOperativo += finServicio.getTime() - inicioUltimo;
+          }
         }
         
         batch.update(doc.ref, {
@@ -461,9 +473,9 @@ exports.cerrarEstadisticasDiarias = functions
       });
       
       await batch.commit();
-      await writeToLog(`Estadísticas diarias cerradas para ${fecha}`);
+      console.log(`[${getMicrosoftTimestamp()}] Estadísticas diarias cerradas para ${fecha}`);
     } catch (error) {
-      await writeToLog(`Error cerrando estadísticas diarias: ${error.message}`);
+      console.error(`[${getMicrosoftTimestamp()}] Error cerrando estadísticas diarias: ${error.message}`);
       throw error;
     }
   });
@@ -474,7 +486,10 @@ exports.borrarEstadisticasDia = functions
   .region('southamerica-east1')
   .https.onRequest(async (req, res) => {
     const db = admin.firestore();
-    const fecha = req.query.fecha || new Date().toISOString().split('T')[0];
+    const fechaQuery = req.query.fecha;
+    const fecha = fechaQuery ? 
+      toMicrosoftDate(new Date(fechaQuery).setHours(0,0,0,0)) : 
+      getMicrosoftStartOfDay();
 
     try {
       // Obtener todos los documentos de la fecha especificada
@@ -483,7 +498,9 @@ exports.borrarEstadisticasDia = functions
         .get();
 
       if (snapshot.empty) {
-        res.status(404).json({ message: `No hay estadísticas para la fecha ${fecha}` });
+        res.status(404).json({ 
+          message: `No hay estadísticas para la fecha ${fromMicrosoftDate(fecha).toISOString().split('T')[0]}` 
+        });
         return;
       }
 
@@ -511,13 +528,14 @@ exports.borrarEstadisticasDia = functions
       // Ejecutar todos los batches
       await Promise.all(batchArray.map(batch => batch.commit()));
       
-      await writeToLog(`Borradas ${snapshot.size} estadísticas del día ${fecha}`);
+      const fechaFormateada = fromMicrosoftDate(fecha).toISOString().split('T')[0];
+      console.log(`[${getMicrosoftTimestamp()}] Borradas ${snapshot.size} estadísticas del día ${fechaFormateada}`);
       res.json({ 
-        message: `Borradas ${snapshot.size} estadísticas del día ${fecha}`,
+        message: `Borradas ${snapshot.size} estadísticas del día ${fechaFormateada}`,
         documentosBorrados: snapshot.size 
       });
     } catch (error) {
-      await writeToLog(`Error borrando estadísticas: ${error.message}`);
+      console.error(`[${getMicrosoftTimestamp()}] Error borrando estadísticas: ${error.message}`);
       res.status(500).json({ error: error.message });
     }
   });

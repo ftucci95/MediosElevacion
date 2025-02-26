@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Estadísticas Consolidadas</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styles/estadisticas3.css">
+    <!-- Archivos JavaScript modularizados -->
+    <script src="scripts/dbInterface.js" defer></script>
+    <script src="scripts/dataCalculator.js" defer></script>
+    <script src="scripts/dashboardCharts.js" defer></script>
+    <style>
+        .fixed-button {
+            position: fixed;
+            padding: 12px 24px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease-out;
+            z-index: 1000;
+            width: 200px; /* Ancho fijo para todos los botones */
+        }
+
+        .fixed-button:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+    </style>
+    <script>
+        // Inicializar la aplicación cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Inicializar Firebase
+            await dbInterface.inicializarFirebase();
+            
+            // Inicializar el dashboard (solo configuración, sin cargar datos)
+            dashboardCharts.inicializarDashboard();
+            
+            // No cargar datos iniciales automáticamente
+            // await dashboardCharts.cargarYProcesarDatos();
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header idéntico a estadisticas.html -->
+        <div class="header">
+            <h1>Estadísticas Consolidadas</h1>
+        </div>
+
+        <div class="filters">
+            <label for="fechaInicio">Fecha inicio:</label>
+            <input type="date" id="fechaInicio" class="date-input">
+            
+            <label for="fechaFin">Fecha fin:</label>
+            <input type="date" id="fechaFin" class="date-input">
+            
+            <button id="btn-actualizar" class="btn btn-primary">Actualizar</button>
+        </div>
+
+        <!-- Indicador de carga -->
+        <div id="loading-indicator" class="loading-container" style="display: none;">
+            <div class="spinner"></div>
+            <div class="loading-text">Cargando datos...</div>
+        </div>
+
+        <!-- Panel de información -->
+        <div id="info-panel" class="info-panel" style="display: none;">
+            <div class="info-panel-header">
+                <h3>Información de Datos</h3>
+                <button class="close-btn" onclick="document.getElementById('info-panel').style.display = 'none';">×</button>
+            </div>
+            <div class="info-panel-content" id="info-panel-content">
+                <!-- El contenido se llenará dinámicamente -->
+            </div>
+        </div>
+
+        <!-- Nueva sección de KPIs -->
+        <div class="kpi-container">
+            <div class="kpi-card">
+                <div class="kpi-title">MTTF de la Red</div>
+                <div class="kpi-value" id="kpi-mttf">120 min</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">MTTR de la Red</div>
+                <div class="kpi-value" id="kpi-mttr">45 min</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Medios con Fallas</div>
+                <div class="kpi-value" id="kpi-fallas">12</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Disponibilidad Promedio</div>
+                <div class="kpi-value" id="kpi-disponibilidad">92.5%</div>
+            </div>
+        </div>
+
+        <!-- Sección de gráficos principales -->
+        <div class="chart-container">
+            <canvas id="graficoConsolidado"></canvas>
+        </div>
+
+        <!-- Nueva sección de dashboard -->
+        <div class="dashboard-grid" id="dashboard">
+            <!-- Las tarjetas se generarán dinámicamente -->
+        </div>
+
+        <!-- Botón de volver -->
+        <button onclick="window.location.href='index.html'" class="fixed-button" style="bottom: 20px; right: 20px;">Volver al Inicio</button>
+        <button onclick="window.location.href='buscamedio.html'" class="fixed-button" style="bottom: 110px; right: 20px;">Buscar Medio</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Configurar el botón de actualizar
+            document.getElementById('btn-actualizar').addEventListener('click', function() {
+                mostrarCargando('Actualizando datos...');
+                dashboardCharts.cargarYProcesarDatos().finally(() => {
+                    ocultarCargando();
+                });
+            });
+            
+            // Funciones para mostrar/ocultar el indicador de carga
+            window.mostrarCargando = function(mensaje = 'Cargando...') {
+                const loadingIndicator = document.getElementById('loading-indicator');
+                const loadingText = loadingIndicator.querySelector('.loading-text');
+                loadingText.textContent = mensaje;
+                loadingIndicator.style.display = 'flex';
+            };
+            
+            window.ocultarCargando = function() {
+                document.getElementById('loading-indicator').style.display = 'none';
+            };
+            
+            // Función para mostrar información en el panel
+            window.mostrarInformacion = function(contenido) {
+                const infoPanel = document.getElementById('info-panel');
+                const infoPanelContent = document.getElementById('info-panel-content');
+                infoPanelContent.innerHTML = contenido;
+                infoPanel.style.display = 'block';
+            };
+        });
+    </script>
+</body>
+</html> 
