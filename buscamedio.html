@@ -241,6 +241,8 @@
                 console.log('Componentes de fecha fin:', { year, month, day });
                 console.log('Fecha fin construida (con +1 día):', fechaFin.toLocaleString());
                 
+                console.log('Fecha fin procesada:', fechaFin.toISOString());
+                
                 return fechaFin;
             }
 
@@ -424,8 +426,13 @@
                 mostrarMensaje('Buscando datos, por favor espere...');
 
                 // Verificar si el medio existe exactamente como está escrito
+                console.log('Comparando:', {
+                    buscado: nombreMedio.trim(),
+                    existentes: Array.from(mediosUnicos.keys())
+                });
+
                 const medioExacto = Array.from(mediosUnicos.keys())
-                    .find(medio => medio === nombreMedio.trim());
+                    .find(medio => medio.trim() === nombreMedio.trim());
 
                 if (!medioExacto) {
                     mostrarMensaje(`No se encontró un medio de elevación con el nombre exacto: "${nombreMedio}"`, 'warning');
@@ -745,13 +752,15 @@
             const fechaFin = new Date(year, month - 1, day);
             
             // Sumar un día a la fecha seleccionada como quickfix
-            fechaFin.setDate(fechaFin.getDate() + 0);
+            fechaFin.setDate(fechaFin.getDate() + 1);
             
             // Establecer la hora a 23:59:59
             fechaFin.setHours(23, 59, 59, 999);
             
             console.log('Componentes de fecha fin:', { year, month, day });
             console.log('Fecha fin construida (con +1 día):', fechaFin.toLocaleString());
+            
+            console.log('Fecha fin procesada:', fechaFin.toISOString());
             
             return fechaFin;
         }
