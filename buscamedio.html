@@ -233,7 +233,7 @@
                 const fechaFin = new Date(year, month - 1, day);
                 
                 // Sumar un día a la fecha seleccionada como quickfix
-                fechaFin.setDate(fechaFin.getDate() + 1);
+                fechaFin.setDate(fechaFin.getDate());
                 
                 // Establecer la hora a 23:59:59
                 fechaFin.setHours(23, 59, 59, 999);
@@ -741,6 +741,7 @@
         // Función para obtener fecha de inicio (00:00:00)
         function getFechaInicio(fecha) {
             const fechaInicio = new Date(fecha);
+            fechaInicio.setDate(fechaInicio.getDate() + 1);
             fechaInicio.setHours(0, 0, 0, 0);
             return fechaInicio;
         }
@@ -752,7 +753,7 @@
             const fechaFin = new Date(year, month - 1, day);
             
             // Sumar un día a la fecha seleccionada como quickfix
-            fechaFin.setDate(fechaFin.getDate() + 1);
+            fechaFin.setDate(fechaFin.getDate());
             
             // Establecer la hora a 23:59:59
             fechaFin.setHours(23, 59, 59, 999);
