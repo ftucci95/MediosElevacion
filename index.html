@@ -8,6 +8,7 @@
   <!-- Agregar en el <head> de tu index.html -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <script>
     // Configuración de Firebase
     const firebaseConfig = {
@@ -59,28 +60,36 @@
       font-family: Arial, sans-serif;
       margin: 0;
       padding: 20px;
-      background-color: white;
+      background-color: var(--background-light);
+    }
+    .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
     }
     .header {
-        background-color: #fed306;
-        padding: 20px;
-        margin-bottom: 30px;
-        text-align: center;
-        width: 100%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
+    background: var(--primary-gradient);
+    padding: 30px;
+    margin-bottom: 30px;
+    border-radius: 0 0 15px 15px;
+    box-shadow: var(--card-shadow);
+}
     .header h1 {
+        color: var(--header-text);
         margin: 0;
-        color: #000;
-        font-size: 2em;
+        font-weight: 700;
+        text-align: center;
     }
     .mapa-container {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 20px;
-      padding: 20px;
+      padding: 25px;
+      background: var(--background-card);
+      border-radius: 15px;
+      margin-bottom: 30px;
+      box-shadow: var(--card-shadow);
     }
     .mapa {
       position: relative;
@@ -149,65 +158,101 @@
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       z-index: 1000;
     }
-    .fixed-button {
+    /* Botones de navegación */
+    .nav-buttons {
         position: fixed;
-        padding: 12px 24px;
-        background-color: #28a745;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 16px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        transition: transform 0.2s ease-out;
-        z-index: 1000;
         right: 20px;
-        width: 200px; /* Ancho fijo para ambos botones */
-    }
-
-    .fixed-button:hover {
-        background-color: #218838;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-
-    /* Posicionamiento específico para cada botón */
-    #estadisticasBtn {
         bottom: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 1000;
     }
-    
-    #buscarMedioBtn {
-        bottom: 110px; /* 20px del botón de abajo + altura del botón + 30px extra */
+
+    .nav-button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 20px;
+        background: var(--primary-color);
+        color: var(--text-primary);
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: var(--card-shadow);
+        transition: transform 0.2s, box-shadow 0.2s;
+        width: 200px;
+        background-color: var(--background-card);
+    }
+
+    .nav-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .nav-button .material-icons {
+        font-size: 20px;
+        color: var(--text-primary);
+    }
+
+    /* Eliminar los estilos específicos de posicionamiento que ya no necesitamos */
+    #estadisticasBtn, #buscarMedioBtn {
+        position: static;
+    }
+
+    /* Agregar las variables necesarias al inicio del <style> */
+    :root {
+        --primary-color: #ffd700;
+        --primary-gradient-light: var(--primary-color);
+        --primary-gradient-dark: var(--primary-color);
+        --primary-gradient: var(--primary-gradient-light);
+        --header-text-light: #333;
+        --header-text-dark: white;
+        --header-text: var(--header-text-light);
+        --card-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        --background-light: #f5f5f5;
+        --background-card: white;
     }
   </style>
 </head>
 
 <body>
-  <div class="header">
-    <h1>Estado de los Medios de Elevación</h1>
+  <div class="container">
+    <div class="header">
+      <h1>Estado de los Medios de Elevación</h1>
+    </div>
+  
+    <!-- Mensajes de estado -->
+    <div id="error-msg" style="display: none;"></div>
+  
+    <!-- Contenedor de mapas -->
+    <div class="mapa-container">
+      <div id="mapaA" class="mapa" style="background-image: url('./LineaA_resized.png');"></div>
+      <div id="mapaB" class="mapa" style="background-image: url('./LineaB_resized.png');"></div>
+      <div id="mapaC" class="mapa" style="background-image: url('./LineaC_resized.png');"></div>
+      <div id="mapaD" class="mapa" style="background-image: url('./LineaD_resized.png');"></div>
+      <div id="mapaE" class="mapa" style="background-image: url('./LineaE_resized.png');"></div>
+      <div id="mapaH" class="mapa" style="background-image: url('./LineaH_resized.png');"></div>
+    </div>
+  
+    <!-- Tooltip único para todos los indicadores -->
+    <div id="global-tooltip"></div>
+  
+    <!-- Indicador de carga -->
+    <div id="loading" class="loading">Cargando datos...</div>
+  
+    <div class="nav-buttons">
+        <button onclick="window.location.href='buscamedio2.html'" class="nav-button">
+            <i class="material-icons">search</i>
+            <span>Buscar Medio</span>
+        </button>
+        <button onclick="window.location.href='estadisticas3.html'" class="nav-button">
+            <i class="material-icons">analytics</i>
+            <span>Estadísticas</span>
+        </button>
+    </div>
   </div>
-
-  <!-- Mensajes de estado -->
-  <div id="error-msg" style="display: none;"></div>
-
-  <!-- Contenedor de mapas -->
-  <div class="mapa-container">
-    <div id="mapaA" class="mapa" style="background-image: url('./LineaA_resized.png');"></div>
-    <div id="mapaB" class="mapa" style="background-image: url('./LineaB_resized.png');"></div>
-    <div id="mapaC" class="mapa" style="background-image: url('./LineaC_resized.png');"></div>
-    <div id="mapaD" class="mapa" style="background-image: url('./LineaD_resized.png');"></div>
-    <div id="mapaE" class="mapa" style="background-image: url('./LineaE_resized.png');"></div>
-    <div id="mapaH" class="mapa" style="background-image: url('./LineaH_resized.png');"></div>
-  </div>
-
-  <!-- Tooltip único para todos los indicadores -->
-  <div id="global-tooltip"></div>
-
-  <!-- Indicador de carga -->
-  <div id="loading" class="loading">Cargando datos...</div>
-
-  <button id="estadisticasBtn" onclick="window.location.href='estadisticas3.html'" class="fixed-button">Ver Estadísticas</button>
-  <button id="buscarMedioBtn" onclick="window.location.href='buscamedio.html'" class="fixed-button">Buscar Medio</button>
+  
 
   <script>
     /**

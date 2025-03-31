@@ -1,0 +1,312 @@
+:root {
+    --primary-color: #ffd700;
+    --primary-gradient-light: var(--primary-color);
+    --primary-gradient-dark: var(--primary-color);
+    --primary-gradient: var(--primary-gradient-light);
+    --success-color: #4CAF50;
+    --error-color: #F44336;
+    --warning-color: #FFC107;
+    --text-primary: #333;
+    --text-secondary: #666;
+    --background-light: #f5f5f5;
+    --card-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    --background-card: white;
+    --border-color: #ddd;
+    --header-text-light: #333;
+    --header-text-dark: white;
+    --header-text: var(--header-text-light);
+}
+
+/* Importar fuentes de Google */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined');
+
+body {
+    font-family: 'Roboto', sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: var(--background-light);
+    color: var(--text-primary);
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    background: var(--primary-gradient);
+    padding: 30px;
+    margin-bottom: 30px;
+    border-radius: 0 0 15px 15px;
+    box-shadow: var(--card-shadow);
+}
+
+.header h1 {
+    color: var(--header-text);
+    margin: 0;
+    font-weight: 700;
+    text-align: center;
+}
+
+.search-box {
+    background: var(--background-card);
+    padding: 25px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: var(--card-shadow);
+}
+
+.date-range-container {
+    display: flex;
+    gap: 40px;
+    margin-top: 20px;
+    align-items: center;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.date-input-group {
+    flex: 1;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.date-input-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.date-input-group input[type="date"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--background-card);
+    color: var(--text-primary);
+    box-sizing: border-box;
+}
+
+.chart-container {
+    background: var(--background-card);
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: var(--card-shadow);
+    height: 400px;
+}
+
+.status-card {
+    background: var(--background-card);
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: var(--card-shadow);
+}
+
+.status-card .status-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.status-card .status-icon {
+    font-size: 24px;
+    margin-right: 10px;
+}
+
+.status-card .status-title {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.status-card .status-content {
+    color: var(--text-secondary);
+}
+
+.nav-buttons {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 1000;
+}
+
+.nav-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: var(--primary-color);
+    color: var(--text-primary);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+    width: 200px;
+    background-color: var(--background-card);
+}
+
+.nav-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.nav-button .material-icons {
+    font-size: 20px;
+    color: var(--text-primary);
+}
+
+/* Estilos para el autocompletado */
+.autocomplete-container {
+    position: relative;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.autocomplete-input {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: border-color 0.2s;
+    background-color: var(--background-card);
+    color: var(--text-primary);
+    box-sizing: border-box;
+}
+
+.autocomplete-input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+    width: 100%;
+}
+
+.autocomplete-list {
+    position: absolute;
+    width: 100%;
+    left: 0;
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--background-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0 0 8px 8px;
+    box-shadow: var(--card-shadow);
+    z-index: 1000;
+    display: none;
+    box-sizing: border-box;
+}
+
+.autocomplete-item {
+    padding: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+    transition: background-color 0.2s;
+    background-color: var(--background-card);
+}
+
+.autocomplete-item:hover {
+    background-color: var(--background-light);
+}
+
+.autocomplete-item .medio-nombre {
+    font-weight: 500;
+}
+
+.autocomplete-item .medio-info {
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    margin-left: 10px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+
+    .date-range-container {
+        flex-direction: column;
+    }
+
+    .nav-buttons {
+        position: static;
+        transform: none;
+        flex-direction: row;
+        justify-content: center;
+        margin-top: 20px;
+    }
+
+    .chart-container {
+        height: 300px;
+    }
+}
+
+/* Agregar botón de tema */
+.theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    z-index: 1000;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    backdrop-filter: blur(5px);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.theme-toggle .material-icons {
+    font-size: 24px;
+}
+
+/* Eliminar el media query de dark mode y dejar solo los selectores de data-theme */
+[data-theme="dark"] {
+    --text-primary: #fff;
+    --text-secondary: #aaa;
+    --background-light: #121212;
+    --background-card: #1e1e1e;
+    --border-color: #333;
+    --primary-gradient: var(--primary-gradient-dark);
+    --header-text: var(--header-text-dark);
+}
+
+[data-theme="dark"] body {
+    background-color: var(--background-light);
+}
+
+[data-theme="dark"] .search-box,
+[data-theme="dark"] .chart-container,
+[data-theme="dark"] .status-card,
+[data-theme="dark"] .nav-button {
+    background-color: var(--background-card);
+}
+
+[data-theme="dark"] .autocomplete-list,
+[data-theme="dark"] .autocomplete-item {
+    background-color: var(--background-card);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .autocomplete-item:hover {
+    background-color: #2a2a2a;
+}
+
+[data-theme="dark"] input[type="date"] {
+    background-color: var(--background-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}

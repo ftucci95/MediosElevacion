@@ -146,10 +146,10 @@ function mostrarMensajeEspera(ctx) {
     ctx.textBaseline = 'middle';
     
     // Dibujar mensaje
-    ctx.fillText('Esperando datos. Presione "Actualizar" para cargar información.', 
+/*     ctx.fillText('Esperando datos. Presione "Actualizar" para cargar información.', 
                 ctx.canvas.width / 2, ctx.canvas.height / 2);
     
-    console.log('✅ Mensaje de espera mostrado en canvas');
+    console.log('✅ Mensaje de espera mostrado en canvas'); */
 }
 
 /**
@@ -524,58 +524,64 @@ function mostrarMensajeNoHayDatos(ctx) {
  * @param {boolean} sinDatos - Indica si no hay datos disponibles
  */
 function crearGraficoBarras(ctx, lineas, disponibilidades, sinDatos = false) {
-    // Colores para cada línea
-    const colores = lineas.map(linea => {
-        const colorInfo = COLORES_LINEAS[linea] || COLORES_LINEAS['Desconocida'];
-        return colorInfo.rgba;
-    });
+    // Detectar si estamos en modo oscuro
+    const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
     
-    // Configuración del gráfico de barras
+    // Colores para modo oscuro
+    const darkModeColors = {
+        title: '#ffffff',      // Blanco para el título
+        text: '#cccccc',       // Gris claro para textos
+        gridLines: '#444444'   // Gris oscuro para las líneas de la grilla
+    };
+
+    // Configuración del gráfico
     const config = {
         type: 'bar',
         data: {
-            labels: lineas.map(linea => {
-                // Extraer solo el nombre de la línea (A, B, C, etc.) para mostrar en la etiqueta
-                const nombreCorto = linea.includes('Línea ') ? linea.split(' ')[1] : linea;
-                return `Línea ${nombreCorto}`;
-            }),
+            labels: lineas,
             datasets: [{
                 label: 'Disponibilidad por Línea (%)',
                 data: disponibilidades,
-                backgroundColor: colores,
-                borderColor: colores,
+                backgroundColor: lineas.map(linea => COLORES_LINEAS[linea].rgba),
+                borderColor: lineas.map(linea => COLORES_LINEAS[linea].color),
                 borderWidth: 1
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100,
-                    title: {
-                        display: true,
-                        text: 'Disponibilidad (%)'
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Línea'
-                    }
-                }
-            },
             plugins: {
                 title: {
                     display: true,
-                    text: sinDatos ? 'No hay datos disponibles para el período seleccionado' : 'Disponibilidad por Línea',
+                    text: 'Disponibilidad por Línea',
+                    color: isDarkMode ? darkModeColors.title : '#333333',
                     font: {
-                        size: 16
+                        size: 16,
+                        weight: 'bold'
                     }
                 },
                 legend: {
                     display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    grid: {
+                        color: isDarkMode ? darkModeColors.gridLines : '#e5e5e5'
+                    },
+                    ticks: {
+                        color: isDarkMode ? darkModeColors.text : '#666666'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: isDarkMode ? darkModeColors.gridLines : '#e5e5e5'
+                    },
+                    ticks: {
+                        color: isDarkMode ? darkModeColors.text : '#666666'
+                    }
                 }
             }
         }
@@ -589,8 +595,20 @@ function crearGraficoBarras(ctx, lineas, disponibilidades, sinDatos = false) {
             console.error('❌ Error al destruir el gráfico anterior:', error);
         }
     }
-    
+
+    // Crear nuevo gráfico
     graficoConsolidado = new Chart(ctx, config);
+
+    // Agregar listener para cambios de tema
+    document.addEventListener('themeChanged', () => {
+        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+        graficoConsolidado.options.plugins.title.color = isDarkMode ? darkModeColors.title : '#333333';
+        graficoConsolidado.options.scales.x.grid.color = isDarkMode ? darkModeColors.gridLines : '#e5e5e5';
+        graficoConsolidado.options.scales.y.grid.color = isDarkMode ? darkModeColors.gridLines : '#e5e5e5';
+        graficoConsolidado.options.scales.x.ticks.color = isDarkMode ? darkModeColors.text : '#666666';
+        graficoConsolidado.options.scales.y.ticks.color = isDarkMode ? darkModeColors.text : '#666666';
+        graficoConsolidado.update();
+    });
 }
 
 /**

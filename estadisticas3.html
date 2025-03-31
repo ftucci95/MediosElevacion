@@ -11,28 +11,6 @@
     <script src="scripts/dbInterface.js" defer></script>
     <script src="scripts/dataCalculator.js" defer></script>
     <script src="scripts/dashboardCharts.js" defer></script>
-    <style>
-        .fixed-button {
-            position: fixed;
-            padding: 12px 24px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            transition: transform 0.2s ease-out;
-            z-index: 1000;
-            width: 200px; /* Ancho fijo para todos los botones */
-        }
-
-        .fixed-button:hover {
-            background-color: #218838;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        }
-    </style>
     <script>
         // Inicializar la aplicación cuando el DOM esté listo
         document.addEventListener('DOMContentLoaded', async () => {
@@ -46,6 +24,7 @@
             // await dashboardCharts.cargarYProcesarDatos();
         });
     </script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body>
     <div class="container">
@@ -53,6 +32,12 @@
         <div class="header">
             <h1>Estadísticas Consolidadas</h1>
         </div>
+
+        <!-- Agregar después del header -->
+        <button class="theme-toggle" onclick="toggleTheme()">
+            <i class="material-icons" id="themeIcon">dark_mode</i>
+            <span id="themeText">Modo Oscuro</span>
+        </button>
 
         <div class="filters">
             <label for="fechaInicio">Fecha inicio:</label>
@@ -111,9 +96,17 @@
             <!-- Las tarjetas se generarán dinámicamente -->
         </div>
 
-        <!-- Botón de volver -->
-        <button onclick="window.location.href='index.html'" class="fixed-button" style="bottom: 20px; right: 20px;">Volver al Inicio</button>
-        <button onclick="window.location.href='buscamedio.html'" class="fixed-button" style="bottom: 110px; right: 20px;">Buscar Medio</button>
+        <!-- Botones navegación: -->
+        <div class="nav-buttons">
+            <button onclick="window.location.href='index.html'" class="nav-button">
+                <i class="material-icons">home</i>
+                <span>Inicio</span>
+            </button>
+            <button onclick="window.location.href='buscamedio2.html'" class="nav-button">
+                <i class="material-icons">search</i>
+                <span>Buscar Medio</span>
+            </button>
+        </div>
     </div>
 
     <script>
@@ -145,6 +138,41 @@
                 infoPanelContent.innerHTML = contenido;
                 infoPanel.style.display = 'block';
             };
+        });
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            if (html.getAttribute('data-theme') === 'dark') {
+                html.removeAttribute('data-theme');
+                themeIcon.textContent = 'dark_mode';
+                themeText.textContent = 'Modo Oscuro';
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.setAttribute('data-theme', 'dark');
+                themeIcon.textContent = 'light_mode';
+                themeText.textContent = 'Modo Claro';
+                localStorage.setItem('theme', 'dark');
+            }
+            
+            // Disparar evento de cambio de tema
+            document.dispatchEvent(new Event('themeChanged'));
+        }
+
+        // Cargar tema guardado
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme');
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            if (savedTheme === 'dark') {
+                html.setAttribute('data-theme', 'dark');
+                themeIcon.textContent = 'light_mode';
+                themeText.textContent = 'Modo Claro';
+            }
         });
     </script>
 </body>
