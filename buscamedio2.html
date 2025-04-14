@@ -800,6 +800,10 @@
                 themeText.textContent = 'Modo Claro';
                 localStorage.setItem('theme', 'dark');
             }
+
+            // Disparar evento personalizado para actualizar el tema
+            const event = new Event('themeChanged');
+            document.dispatchEvent(event);
         }
 
         // Cargar tema guardado
@@ -821,15 +825,56 @@
             if (chart) {
                 const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
                 
+                // Colores para modo claro
+                const lightColors = {
+                    grid: 'rgba(0, 0, 0, 0.1)',
+                    text: '#666',
+                    title: '#333',
+                    point: '#ffd700',
+                    line: '#ffd700',
+                    background: 'rgba(255, 215, 0, 0.1)',
+                    tooltipBg: 'rgba(255, 255, 255, 0.9)',
+                    tooltipText: '#333'
+                };
+
+                // Colores para modo oscuro
+                const darkColors = {
+                    grid: 'rgba(255, 255, 255, 0.2)',
+                    text: '#fff',
+                    title: '#fff',
+                    point: '#ffd700',
+                    line: '#ffd700',
+                    background: 'rgba(255, 215, 0, 0.2)',
+                    tooltipBg: 'rgba(0, 0, 0, 0.8)',
+                    tooltipText: '#fff'
+                };
+
+                const colors = isDark ? darkColors : lightColors;
+
                 // Actualizar colores de la grilla
-                chart.options.scales.x.grid.color = isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.1)';
-                chart.options.scales.y.grid.color = isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.1)';
+                chart.options.scales.x.grid.color = colors.grid;
+                chart.options.scales.y.grid.color = colors.grid;
                 
                 // Actualizar colores de texto
-                chart.options.scales.x.ticks.color = isDark ? '#fff' : '#666';
-                chart.options.scales.y.ticks.color = isDark ? '#fff' : '#666';
-                chart.options.plugins.title.color = isDark ? '#fff' : '#333';
-                
+                chart.options.scales.x.ticks.color = colors.text;
+                chart.options.scales.y.ticks.color = colors.text;
+                chart.options.plugins.title.color = colors.title;
+
+                // Actualizar colores de los puntos y línea
+                chart.data.datasets[0].borderColor = colors.line;
+                chart.data.datasets[0].backgroundColor = colors.background;
+                chart.data.datasets[0].pointBackgroundColor = colors.point;
+
+                // Actualizar colores de tooltips
+                chart.options.plugins.tooltip = {
+                    backgroundColor: colors.tooltipBg,
+                    titleColor: colors.tooltipText,
+                    bodyColor: colors.tooltipText,
+                    borderColor: colors.line,
+                    borderWidth: 1
+                };
+
+                // Actualizar el gráfico
                 chart.update();
             }
         });

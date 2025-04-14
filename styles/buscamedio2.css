@@ -74,10 +74,17 @@ body {
 }
 
 .date-input-group label {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin-bottom: 8px;
     color: var(--text-secondary);
     font-size: 0.9rem;
+}
+
+.date-input-group label .material-icons {
+    font-size: 18px;
+    vertical-align: middle;
 }
 
 .date-input-group input[type="date"] {
