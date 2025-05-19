@@ -1,0 +1,214 @@
+:root {
+    --primary-color: #ffd700;
+    --primary-gradient-light: var(--primary-color);
+    --primary-gradient-dark: var(--primary-color);
+    --primary-gradient: var(--primary-gradient-light);
+    --success-color: #4CAF50;
+    --error-color: #F44336;
+    --warning-color: #FFC107;
+    --text-primary: #333;
+    --text-secondary: #666;
+    --background-light: #f5f5f5;
+    --card-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    --background-card: white;
+    --border-color: #ddd;
+    --header-text-light: #333;
+    --header-text-dark: white;
+    --header-text: var(--header-text-light);
+}
+
+/* Importar fuentes de Google */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined');
+
+body {
+    font-family: 'Roboto', sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: var(--background-light);
+    color: var(--text-primary);
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    background: var(--primary-gradient);
+    padding: 30px;
+    margin-bottom: 30px;
+    border-radius: 0 0 15px 15px;
+    box-shadow: var(--card-shadow);
+}
+
+.header h1 {
+    color: var(--header-text);
+    margin: 0;
+    font-weight: 700;
+    text-align: center;
+}
+
+main {
+    background: var(--background-card);
+    padding: 25px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: var(--card-shadow);
+}
+
+.nav-buttons {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 1000;
+}
+
+.nav-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: var(--primary-color);
+    color: var(--text-primary);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+    width: 200px;
+    background-color: var(--background-card);
+}
+
+.nav-button:hover {
+    background: var(--primary-color);
+    color: var(--text-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.nav-button .material-icons {
+    font-size: 20px;
+    color: var(--text-primary);
+}
+
+/* Agregar botón de tema */
+.theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    z-index: 1000;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    backdrop-filter: blur(5px);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.theme-toggle .material-icons {
+    font-size: 24px;
+}
+
+/* Estilos para modo oscuro */
+[data-theme="dark"] {
+    --primary-color: #73661f;
+    --text-primary: #fff;
+    --text-secondary: #aaa;
+    --background-light: #121212;
+    --background-card: #1e1e1e;
+    --border-color: #333;
+    --primary-gradient: var(--primary-gradient-dark);
+    --header-text: var(--header-text-dark);
+}
+
+[data-theme="dark"] body {
+    background-color: var(--background-light);
+}
+
+[data-theme="dark"] main,
+[data-theme="dark"] .nav-button {
+    background-color: var(--background-card);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+
+    .nav-buttons {
+        position: static;
+        transform: none;
+        flex-direction: row;
+        justify-content: center;
+        margin-top: 20px;
+    }
+}
+
+/* Tabla de inconsistencias */
+.tabla-inconsistencias-container {
+    overflow-x: auto;
+    margin-top: 1.5rem;
+}
+
+.tabla-inconsistencias {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--background-card);
+    box-shadow: var(--card-shadow);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.tabla-inconsistencias th, .tabla-inconsistencias td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+}
+
+.tabla-inconsistencias th {
+    background: var(--primary-gradient);
+    color: var(--header-text);
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.tabla-inconsistencias tr:last-child td {
+    border-bottom: none;
+}
+
+.tabla-inconsistencias tr:hover {
+    background: var(--background-light);
+}
+
+.cargando-inconsistencias {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin: 2rem 0;
+}
+
+.sin-inconsistencias {
+    text-align: center;
+    color: var(--success-color);
+    font-size: 1.2rem;
+    margin: 2rem 0;
+}
+
+[data-theme="dark"] .tabla-inconsistencias th {
+    background: var(--primary-gradient-dark);
+    color: var(--header-text-dark);
+}
+[data-theme="dark"] .tabla-inconsistencias tr:hover {
+    background: #232323;
+} 

@@ -8,14 +8,25 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="styles/estadisticas3.css">
     <!-- Archivos JavaScript modularizados -->
-    <script src="scripts/dbInterface.js" defer></script>
-    <script src="scripts/dataCalculator.js" defer></script>
-    <script src="scripts/dashboardCharts.js" defer></script>
+    <script src="scripts/dbInterface2.js" defer></script>
+    <script src="scripts/dataCalculator2.js" defer></script>
+    <script src="scripts/dashboardCharts2.js" defer></script>
     <script>
         // Inicializar la aplicación cuando el DOM esté listo
         document.addEventListener('DOMContentLoaded', async () => {
             // Inicializar Firebase
             await dbInterface.inicializarFirebase();
+
+/*             // Imprimir resumen por línea y estación
+            Object.keys(LISTA_MEDIOS).forEach(linea => {
+                console.log(`\n📍 ${linea}:`);
+                Object.keys(LISTA_MEDIOS[linea]).forEach(estacion => {
+                    console.log(`  🚉 ${estacion}:`);
+                    LISTA_MEDIOS[linea][estacion].forEach(medio => {
+                        console.log(`    - ${medio.nombre} (${medio.tipo}): ${medio.estado}`);
+                    });
+                });
+            });  */
             
             // Inicializar el dashboard (solo configuración, sin cargar datos)
             dashboardCharts.inicializarDashboard();
@@ -45,7 +56,12 @@
             
             <label for="fechaFin">Fecha fin:</label>
             <input type="date" id="fechaFin" class="date-input">
-            
+
+            <!-- <label class="checkbox-container">
+                <input type="checkbox" id="horarioServicio">
+                <span class="checkbox-label">horario servicio?</span>
+            </label> -->
+
             <button id="btn-actualizar" class="btn btn-primary">Actualizar</button>
         </div>
 
@@ -106,17 +122,63 @@
                 <i class="material-icons">search</i>
                 <span>Buscar Medio</span>
             </button>
+            <button onclick="window.location.href='estadisticas4.html'" class="nav-button">
+                <i class="material-icons">analytics</i>
+                <span>Estadísticas</span>
+            </button>
+            <button onclick="window.location.href='enReparacion.html'" class="nav-button">
+                <i class="material-icons">build</i>
+                <span>En Reparación</span>
+            </button>
+            <button onclick="window.location.href='mediosSinCambios.html'" class="nav-button">
+                <i class="material-icons">help</i>
+                <span>Medios sin cambios</span>
+            </button>
+            <button onclick="window.location.href='inconsistencias.html'" class="nav-button">
+                <i class="material-icons">priority_high</i>
+                <span>Inconsistencias</span>
+            </button>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Configurar el botón de actualizar
-            document.getElementById('btn-actualizar').addEventListener('click', function() {
-                mostrarCargando('Actualizando datos...');
-                dashboardCharts.cargarYProcesarDatos().finally(() => {
+            document.getElementById('btn-actualizar').addEventListener('click', async function() {
+                try {
+                    mostrarCargando('Actualizando datos...');
+                    const considerarHorario = document.getElementById('horarioServicio').checked;
+                    
+                    // Verificar que los módulos estén cargados
+                    if (!window.dbInterface || !window.dataCalculator || !window.dashboardCharts) {
+                        throw new Error('Los módulos necesarios no están cargados correctamente');
+                    }
+                    
+                    await dbInterface.cargarDatos();
+                    console.log('✅ Datos cargados correctamente');
+                    
+                    await dataCalculator.calcular(considerarHorario);
+                    console.log('✅ Cálculos realizados correctamente');
+                    
+                    // Verificar que los datos se calcularon
+                    if (!dataCalculator.TIEMPOS_MEDIOS || !dataCalculator.INDICADORES_MEDIOS) {
+                        throw new Error('Los cálculos no generaron los resultados esperados');
+                    }
+                    
+                    await dashboardCharts.cargarYProcesarDatos();
+                    console.log('✅ Dashboard actualizado');
+                    
                     ocultarCargando();
-                });
+                } catch (error) {
+                    console.error('❌ Error durante la actualización:', error);
+                    mostrarInformacion(`
+                        <div class="error-message">
+                            <strong>Error durante la actualización:</strong><br>
+                            ${error.message}
+                        </div>
+                    `);
+                    ocultarCargando();
+                }
             });
             
             // Funciones para mostrar/ocultar el indicador de carga

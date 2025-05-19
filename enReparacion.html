@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Medios fuera de servicio</title>
+    <link rel="stylesheet" href="styles/mediosSinCambios.css">
+    <link rel="stylesheet" href="styles/enReparacion.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="./scripts/dbInterface2.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Medios fuera de servicio</h1>
+        </div>
+
+        <!-- Botón de tema -->
+        <button class="theme-toggle" onclick="toggleTheme()">
+            <i class="material-icons" id="themeIcon">dark_mode</i>
+            <span id="themeText">Modo Oscuro</span>
+        </button>
+
+        <!-- Contenedor de tablas por línea -->
+        <div id="tablas-lineas" style="margin-top: 2rem;"></div>
+
+        <!-- Botones de navegación -->
+        <div class="nav-buttons">
+            <button onclick="window.location.href='index.html'" class="nav-button">
+                <i class="material-icons">home</i>
+                <span>Inicio</span>
+            </button>
+            <button onclick="window.location.href='buscamedio2.html'" class="nav-button">
+                <i class="material-icons">search</i>
+                <span>Buscar Medio</span>
+            </button>
+            <button onclick="window.location.href='estadisticas4.html'" class="nav-button">
+                <i class="material-icons">analytics</i>
+                <span>Estadísticas</span>
+            </button>
+            <button onclick="window.location.href='enReparacion.html'" class="nav-button">
+                <i class="material-icons">build</i>
+                <span>En Reparación</span>
+            </button>
+            <button onclick="window.location.href='mediosSinCambios.html'" class="nav-button">
+                <i class="material-icons">help</i>
+                <span>Medios sin cambios</span>
+            </button>
+            <button onclick="window.location.href='inconsistencias.html'" class="nav-button">
+                <i class="material-icons">priority_high</i>
+                <span>Inconsistencias</span>
+            </button>
+        </div>
+    </div>
+    <script>
+    function toggleTheme() {
+        const html = document.documentElement;
+        const themeIcon = document.getElementById('themeIcon');
+        const themeText = document.getElementById('themeText');
+        if (html.getAttribute('data-theme') === 'dark') {
+            html.removeAttribute('data-theme');
+            themeIcon.textContent = 'dark_mode';
+            themeText.textContent = 'Modo Oscuro';
+            localStorage.setItem('theme', 'light');
+        } else {
+            html.setAttribute('data-theme', 'dark');
+            themeIcon.textContent = 'light_mode';
+            themeText.textContent = 'Modo Claro';
+            localStorage.setItem('theme', 'dark');
+        }
+        document.dispatchEvent(new Event('themeChanged'));
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedTheme = localStorage.getItem('theme');
+        const html = document.documentElement;
+        const themeIcon = document.getElementById('themeIcon');
+        const themeText = document.getElementById('themeText');
+        if (savedTheme === 'dark') {
+            html.setAttribute('data-theme', 'dark');
+            themeIcon.textContent = 'light_mode';
+            themeText.textContent = 'Modo Claro';
+        }
+    });
+    </script>
+    <script src="enReparacion.js"></script>
+</body>
+</html>

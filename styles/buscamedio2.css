@@ -163,6 +163,8 @@ body {
 }
 
 .nav-button:hover {
+    background: var(--primary-color);
+    color: var(--text-primary);
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
@@ -282,6 +284,7 @@ body {
 
 /* Eliminar el media query de dark mode y dejar solo los selectores de data-theme */
 [data-theme="dark"] {
+    --primary-color: #73661f;
     --text-primary: #fff;
     --text-secondary: #aaa;
     --background-light: #121212;

@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.2.0/dist/chartjs-adapter-luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
     <link rel="stylesheet" href="styles/buscamedio2.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
@@ -47,9 +48,25 @@
                 <i class="material-icons">home</i>
                 <span>Inicio</span>
             </button>
-            <button onclick="window.location.href='estadisticas3.html'" class="nav-button">
+            <button onclick="window.location.href='buscamedio2.html'" class="nav-button">
+                <i class="material-icons">search</i>
+                <span>Buscar Medio</span>
+            </button>
+            <button onclick="window.location.href='estadisticas4.html'" class="nav-button">
                 <i class="material-icons">analytics</i>
                 <span>Estadísticas</span>
+            </button>
+            <button onclick="window.location.href='enReparacion.html'" class="nav-button">
+                <i class="material-icons">build</i>
+                <span>En Reparación</span>
+            </button>
+            <button onclick="window.location.href='mediosSinCambios.html'" class="nav-button">
+                <i class="material-icons">help</i>
+                <span>Medios sin cambios</span>
+            </button>
+            <button onclick="window.location.href='inconsistencias.html'" class="nav-button">
+                <i class="material-icons">priority_high</i>
+                <span>Inconsistencias</span>
             </button>
         </div>
 
@@ -151,6 +168,10 @@
             
             db = firebase.firestore();
             console.log('✅ Conexión a Firestore establecida');
+
+            // Registrar el plugin de zoom
+            Chart.register(ChartZoom);
+            console.log('✅ Plugin de zoom registrado correctamente');
         } catch (error) {
             console.error('❌ Error al inicializar Firebase:', error);
         }
@@ -298,27 +319,88 @@
             // Función para actualizar sugerencias
             async function actualizarSugerencias(searchText) {
                 try {
-                    // Si no hay texto de búsqueda, ocultar sugerencias
                     if (!searchText.trim()) {
                         autocompleteList.style.display = 'none';
                         return;
                     }
 
-                    // Filtrar sugerencias basadas en el texto de búsqueda
-                    const searchLower = searchText.toLowerCase();
-                    const sugerencias = Array.from(mediosUnicos.entries())
-                        .filter(([medio]) => medio.toLowerCase().includes(searchLower))
-                        .sort((a, b) => a[0].localeCompare(b[0]));
+                    // Normalizar el texto de búsqueda (convertir a minúsculas y normalizar acentos)
+                    const textoNormalizado = searchText.toLowerCase()
+                        .normalize("NFD")
+                        .replace(/[\u0300-\u036f]/g, "");
 
-                    // Actualizar lista de sugerencias
+                    // Detectar si hay una búsqueda de línea
+                    const lineaMatch = textoNormalizado.match(/linea\s+([a-z])/i);
+                    
+                    // Dividir el texto de búsqueda en palabras, pero preservar "Línea X" como una unidad
+                    let palabrasBusqueda;
+                    if (lineaMatch) {
+                        // Si encontramos "Línea X", la preservamos como una unidad
+                        const lineaCompleta = lineaMatch[0];
+                        palabrasBusqueda = textoNormalizado
+                            .replace(lineaCompleta, '') // Remover la línea del texto
+                            .split(' ')
+                            .filter(p => p.length > 0)
+                            .concat([lineaCompleta]); // Agregar la línea como una palabra
+                    } else {
+                        palabrasBusqueda = textoNormalizado.split(' ').filter(p => p.length > 0);
+                    }
+                    
+                    // Filtrar sugerencias basadas en todas las palabras
+                    const sugerencias = Array.from(mediosUnicos.entries())
+                        .filter(([medio, info]) => {
+                            // Normalizar los campos para búsqueda
+                            const medioNormalizado = medio.toLowerCase()
+                                .normalize("NFD")
+                                .replace(/[\u0300-\u036f]/g, "");
+                            const lineaNormalizada = info.linea.toLowerCase()
+                                .normalize("NFD")
+                                .replace(/[\u0300-\u036f]/g, "");
+                            const estacionNormalizada = info.estacion.toLowerCase()
+                                .normalize("NFD")
+                                .replace(/[\u0300-\u036f]/g, "");
+                            const tipoNormalizado = info.tipo.toLowerCase()
+                                .normalize("NFD")
+                                .replace(/[\u0300-\u036f]/g, "");
+
+                            // Verificar si todas las palabras coinciden en cualquier campo
+                            return palabrasBusqueda.every(palabra => {
+                                // Si la palabra es una línea (ej: "linea e")
+                                if (palabra.startsWith('linea')) {
+                                    return lineaNormalizada.includes(palabra);
+                                }
+                                // Para otras palabras, buscar en todos los campos
+                                return medioNormalizado.includes(palabra) || 
+                                       lineaNormalizada.includes(palabra) ||
+                                       estacionNormalizada.includes(palabra) ||
+                                       tipoNormalizado.includes(palabra);
+                            });
+                        })
+                        .sort((a, b) => {
+                            // Priorizar coincidencias exactas en el nombre
+                            const aExacto = a[0].toLowerCase() === searchText.toLowerCase();
+                            const bExacto = b[0].toLowerCase() === searchText.toLowerCase();
+                            if (aExacto && !bExacto) return -1;
+                            if (!aExacto && bExacto) return 1;
+                            return a[0].localeCompare(b[0]);
+                        });
+
+                    // Actualizar lista de sugerencias con resaltado
                     if (sugerencias.length > 0) {
                         autocompleteList.innerHTML = sugerencias
-                            .map(([medio, info]) => `
-                                <div class="autocomplete-item" data-value="${medio}">
-                                    <span class="medio-nombre">${medio}</span>
-                                    <span class="medio-info">- ${info.linea} - ${info.estacion}</span>
-                                </div>
-                            `)
+                            .map(([medio, info]) => {
+                                // Resaltar las palabras coincidentes
+                                const medioResaltado = resaltarCoincidencias(medio, palabrasBusqueda);
+                                const lineaResaltada = resaltarCoincidencias(info.linea, palabrasBusqueda);
+                                const estacionResaltada = resaltarCoincidencias(info.estacion, palabrasBusqueda);
+                                
+                                return `
+                                    <div class="autocomplete-item" data-value="${medio}">
+                                        <span class="medio-nombre">${medioResaltado}</span>
+                                        <span class="medio-info">- ${lineaResaltada} - ${estacionResaltada}</span>
+                                    </div>
+                                `;
+                            })
                             .join('');
                         autocompleteList.style.display = 'block';
                     } else {
@@ -329,6 +411,16 @@
                 } catch (error) {
                     console.error('❌ Error al actualizar sugerencias:', error);
                 }
+            }
+
+            // Función auxiliar para resaltar coincidencias
+            function resaltarCoincidencias(texto, palabras) {
+                let textoResaltado = texto;
+                palabras.forEach(palabra => {
+                    const regex = new RegExp(`(${palabra})`, 'gi');
+                    textoResaltado = textoResaltado.replace(regex, '<mark>$1</mark>');
+                });
+                return textoResaltado;
             }
 
             // Manejar clics en las sugerencias
@@ -673,6 +765,23 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
+                            zoom: {
+                                pan: {
+                                    enabled: true,
+                                    mode: 'x',
+                                    modifierKey: 'ctrl',
+                                },
+                                zoom: {
+                                    wheel: {
+                                        enabled: true,
+                                        modifierKey: 'ctrl',
+                                    },
+                                    pinch: {
+                                        enabled: true
+                                    },
+                                    mode: 'x',
+                                }
+                            },
                             title: {
                                 display: true,
                                 text: nombreMedio ? `Estado del Medio: ${nombreMedio}` : 'Estado del Medio',

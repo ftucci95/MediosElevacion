@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Inconsistencias - Medios de Elevación</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="styles/inconsistencias.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Inconsistencias en el Sistema</h1>
+        </div>
+
+        <main id="main-inconsistencias">
+            <div class="cargando-inconsistencias">Cargando inconsistencias...</div>
+        </main>
+
+        <div class="nav-buttons">
+            <button onclick="window.location.href='index.html'" class="nav-button">
+                <i class="material-icons">home</i>
+                <span>Inicio</span>
+            </button>
+            <button onclick="window.location.href='buscamedio2.html'" class="nav-button">
+                <i class="material-icons">search</i>
+                <span>Buscar Medio</span>
+            </button>
+            <button onclick="window.location.href='estadisticas4.html'" class="nav-button">
+                <i class="material-icons">analytics</i>
+                <span>Estadísticas</span>
+            </button>
+            <button onclick="window.location.href='enReparacion.html'" class="nav-button">
+                <i class="material-icons">build</i>
+                <span>En Reparación</span>
+            </button>
+            <button onclick="window.location.href='mediosSinCambios.html'" class="nav-button">
+                <i class="material-icons">help</i>
+                <span>Medios sin cambios</span>
+            </button>
+            <button onclick="window.location.href='inconsistencias.html'" class="nav-button">
+                <i class="material-icons">priority_high</i>
+                <span>Inconsistencias</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Agregar botón de tema -->
+    <button class="theme-toggle" onclick="toggleTheme()">
+        <i class="material-icons" id="themeIcon">dark_mode</i>
+        <span id="themeText">Modo Oscuro</span>
+    </button>
+
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            if (html.getAttribute('data-theme') === 'dark') {
+                html.removeAttribute('data-theme');
+                themeIcon.textContent = 'dark_mode';
+                themeText.textContent = 'Modo Oscuro';
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.setAttribute('data-theme', 'dark');
+                themeIcon.textContent = 'light_mode';
+                themeText.textContent = 'Modo Claro';
+                localStorage.setItem('theme', 'dark');
+            }
+
+            // Disparar evento personalizado para actualizar el tema
+            const event = new Event('themeChanged');
+            document.dispatchEvent(event);
+        }
+
+        // Cargar tema guardado
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme');
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            if (savedTheme === 'dark') {
+                html.setAttribute('data-theme', 'dark');
+                themeIcon.textContent = 'light_mode';
+                themeText.textContent = 'Modo Claro';
+            }
+        });
+    </script>
+    <script src="./scripts/dbInterface2.js"></script>
+    <script src="inconsistencias.js"></script>
+</body>
+</html> 

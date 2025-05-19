@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medios sin Cambios - Medios de Elevación</title>
+    <link rel="stylesheet" href="./styles/styles.css">
+    <link rel="stylesheet" href="./styles/mediosSinCambios.css">
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="./scripts/dbInterface2.js"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Medios de Elevación sin Cambios de Estado</h1>
+        </div>
+
+        <main>
+            <section class="controls">
+                <div class="control-group">
+                    <label for="diasSinCambios">Días sin cambios:</label>
+                    <input type="number" id="diasSinCambios" value="15" min="1" max="365">
+                    <button onclick="actualizarTabla()" class="btn btn-primary">Actualizar</button>
+                </div>
+            </section>
+
+            <section class="table-container">
+                <div id="cantidadSinCambios" style="margin-bottom: 1rem; font-weight: bold;"></div>
+                <table id="tablaMediosSinCambios">
+                    <thead>
+                        <tr>
+                            <th>Línea</th>
+                            <th>Estación</th>
+                            <th>Nombre</th>
+                            <th>Descripción</th>
+                            <th>Último Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Los datos se cargarán dinámicamente -->
+                    </tbody>
+                </table>
+            </section>
+        </main>
+
+        <div class="nav-buttons">
+            <button onclick="window.location.href='index.html'" class="nav-button">
+                <i class="material-icons">home</i>
+                <span>Inicio</span>
+            </button>
+            <button onclick="window.location.href='buscamedio2.html'" class="nav-button">
+                <i class="material-icons">search</i>
+                <span>Buscar Medio</span>
+            </button>
+            <button onclick="window.location.href='estadisticas4.html'" class="nav-button">
+                <i class="material-icons">analytics</i>
+                <span>Estadísticas</span>
+            </button>
+            <button onclick="window.location.href='enReparacion.html'" class="nav-button">
+                <i class="material-icons">build</i>
+                <span>En Reparación</span>
+            </button>
+            <button onclick="window.location.href='mediosSinCambios.html'" class="nav-button">
+                <i class="material-icons">help</i>
+                <span>Medios sin cambios</span>
+            </button>
+            <button onclick="window.location.href='inconsistencias.html'" class="nav-button">
+                <i class="material-icons">priority_high</i>
+                <span>Inconsistencias</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Agregar botón de tema -->
+    <button class="theme-toggle" onclick="toggleTheme()">
+        <i class="material-icons" id="themeIcon">dark_mode</i>
+        <span id="themeText">Modo Oscuro</span>
+    </button>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await dbInterface.inicializarFirebase();
+                await actualizarTabla();
+            } catch (error) {
+                console.error('Error al inicializar:', error);
+                alert('Error al inicializar la aplicación. Por favor, recarga la página.');
+            }
+        });
+
+        async function actualizarTabla() {
+            try {
+                const diasSinCambios = parseInt(document.getElementById('diasSinCambios').value);
+                const fechaFin = new Date();
+                const fechaInicio = new Date(fechaFin.getTime() - (diasSinCambios * 24 * 60 * 60 * 1000));
+
+                // Obtener registros del período
+                const registros = await dbInterface.obtenerHistorialCambios(fechaInicio, fechaFin);
+                
+                // Crear un Set con los IDs de los medios que sí tuvieron cambios
+                const mediosConCambios = new Set();
+                registros.forEach(registro => {
+                    const linea = (registro.linea || '').trim();
+                    const estacion = (registro.estacion || '').trim();
+                    const id = (registro.id || '').trim();
+                    const descripcion = (registro.descripcion || '').trim();
+                    const clave = `${linea}-${estacion}-${id}`;
+                    mediosConCambios.add(clave);
+                });
+
+                // Depuración: mostrar claves de medios con cambios
+                console.log('Claves de medios con cambios en el período:', Array.from(mediosConCambios));
+
+                // Obtener la tabla y limpiarla
+                const tbody = document.querySelector('#tablaMediosSinCambios tbody');
+                tbody.innerHTML = '';
+
+                // Recorrer LISTA_MEDIOS para encontrar los que no tuvieron cambios
+                let contador = 0;
+                const clavesTodosMedios = [];
+                for (const [linea, estaciones] of Object.entries(LISTA_MEDIOS)) {
+                    for (const [estacion, medios] of Object.entries(estaciones)) {
+                        for (const medio of medios) {
+                            const claveMedio = `${linea.trim()}-${estacion.trim()}-${(medio.id || '').trim()}`;
+                            clavesTodosMedios.push(claveMedio);
+                            if (!mediosConCambios.has(claveMedio)) {
+                                const estado = dbInterface.consultarEstadoActual(linea, estacion, medio.id);
+                                // Determinar clase según el estado
+                                let claseEstado = '';
+                                if (estado === 'Operativo') {
+                                    claseEstado = 'estado-operativo';
+                                } else if (estado === 'No operativo') {
+                                    claseEstado = 'estado-no-operativo';
+                                }
+                                const row = document.createElement('tr');
+                                row.innerHTML = `
+                                    <td>${linea}</td>
+                                    <td>${estacion}</td>
+                                    <td>${medio.id}</td>
+                                    <td>${medio.descripcion}</td>
+                                    <td class="${claseEstado}">${estado}</td>
+                                `;
+                                tbody.appendChild(row);
+                                contador++;
+                            }
+                        }
+                    }
+                }
+
+                // Depuración: mostrar todas las claves de medios
+                console.log('Claves de todos los medios:', clavesTodosMedios);
+
+                // Mostrar mensaje si no hay resultados
+                if (contador === 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td colspan="4" class="no-data">
+                            No se encontraron medios sin cambios en los últimos ${diasSinCambios} días
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                }
+
+                document.getElementById('cantidadSinCambios').textContent =
+                    `Cantidad de medios sin cambios: ${contador} (${((contador * 100 / totalMedios).toFixed(2))}%)`;
+
+            } catch (error) {
+                console.error('Error al actualizar la tabla:', error);
+                alert('Error al actualizar la tabla. Por favor, intenta nuevamente.');
+            }
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            if (html.getAttribute('data-theme') === 'dark') {
+                html.removeAttribute('data-theme');
+                themeIcon.textContent = 'dark_mode';
+                themeText.textContent = 'Modo Oscuro';
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.setAttribute('data-theme', 'dark');
+                themeIcon.textContent = 'light_mode';
+                themeText.textContent = 'Modo Claro';
+                localStorage.setItem('theme', 'dark');
+            }
+
+            // Disparar evento personalizado para actualizar el tema
+            const event = new Event('themeChanged');
+            document.dispatchEvent(event);
+        }
+
+        // Cargar tema guardado
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme');
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            if (savedTheme === 'dark') {
+                html.setAttribute('data-theme', 'dark');
+                themeIcon.textContent = 'light_mode';
+                themeText.textContent = 'Modo Claro';
+            }
+        });
+    </script>
+</body>
+</html> 
