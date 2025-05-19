@@ -169,6 +169,13 @@
         z-index: 1000;
     }
 
+    .nav-button:hover {
+    background: var(--primary-color);
+    color: var(--text-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
     .nav-button {
         display: flex;
         align-items: center;
@@ -242,14 +249,30 @@
     <div id="loading" class="loading">Cargando datos...</div>
   
     <div class="nav-buttons">
-        <button onclick="window.location.href='buscamedio2.html'" class="nav-button">
-            <i class="material-icons">search</i>
-            <span>Buscar Medio</span>
-        </button>
-        <button onclick="window.location.href='estadisticas3.html'" class="nav-button">
-            <i class="material-icons">analytics</i>
-            <span>Estadísticas</span>
-        </button>
+      <button onclick="window.location.href='index.html'" class="nav-button">
+        <i class="material-icons">home</i>
+        <span>Inicio</span>
+    </button>
+    <button onclick="window.location.href='buscamedio2.html'" class="nav-button">
+        <i class="material-icons">search</i>
+        <span>Buscar Medio</span>
+    </button>
+    <button onclick="window.location.href='estadisticas4.html'" class="nav-button">
+        <i class="material-icons">analytics</i>
+        <span>Estadísticas</span>
+    </button>
+    <button onclick="window.location.href='enReparacion.html'" class="nav-button">
+        <i class="material-icons">build</i>
+        <span>En Reparación</span>
+    </button>
+    <button onclick="window.location.href='mediosSinCambios.html'" class="nav-button">
+        <i class="material-icons">help</i>
+        <span>Medios sin cambios</span>
+    </button>
+    <button onclick="window.location.href='inconsistencias.html'" class="nav-button">
+        <i class="material-icons">priority_high</i>
+        <span>Inconsistencias</span>
+    </button>
     </div>
   </div>
   

@@ -53,12 +53,35 @@ body {
     text-align: center;
 }
 
-.filters { 
+.filters {
+    display: flex;
+    align-items: center;
+    gap: 15px;
     background: var(--background-card);
-    padding: 15px; 
-    border-radius: 8px; 
-    margin-bottom: 20px; 
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
     box-shadow: var(--card-shadow);
+    flex-wrap: wrap;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.checkbox-container input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.checkbox-label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    user-select: none;
 }
 
 /* Indicador de carga */
@@ -647,6 +670,7 @@ canvas.grafico-torta {
 
 /* Tema oscuro */
 [data-theme="dark"] {
+    --primary-color: #73661f;
     --text-primary: #fff;
     --text-secondary: #aaa;
     --background-light: #121212;
@@ -712,6 +736,8 @@ canvas.grafico-torta {
 }
 
 .nav-button:hover {
+    background: var(--primary-color);
+    color: var(--text-primary);
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
