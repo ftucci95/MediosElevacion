@@ -147,7 +147,7 @@
             document.getElementById('btn-actualizar').addEventListener('click', async function() {
                 try {
                     mostrarCargando('Actualizando datos...');
-                    const considerarHorario = document.getElementById('horarioServicio').checked;
+                    const considerarHorario = true;
                     
                     // Verificar que los módulos estén cargados
                     if (!window.dbInterface || !window.dataCalculator || !window.dashboardCharts) {
